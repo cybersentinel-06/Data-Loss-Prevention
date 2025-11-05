@@ -1,0 +1,41 @@
+policy:
+  id: "pol-002-gdpr"
+  name: "GDPR: Personal Information Protection"
+  description: "Detect and control PII transfers under GDPR compliance"
+  version: "1.0.0"
+  enabled: true
+  priority: 90
+
+  compliance_tags:
+    - "GDPR Article 5"
+    - "GDPR Article 32"
+    - "GDPR Article 35"
+
+  conditions:
+    all:
+      - field: "classification.labels"
+        operator: "contains"
+        value: "PII"
+      - field: "classification.score"
+        operator: ">="
+        value: 0.75
+      - field: "destination_country"
+        operator: "not in"
+        value: ["EU", "EEA"]  # Allow within EU/EEA
+
+  actions:
+    - type: "block"
+      parameters:
+        reason: "PII transfer outside EU/EEA requires approval"
+
+    - type: "alert"
+      parameters:
+        severity: "high"
+        recipients:
+          - "dpo@company.com"
+          - "legal@company.com"
+
+    - type: "log"
+      parameters:
+        siem_forward: true
+        retention_years: 7

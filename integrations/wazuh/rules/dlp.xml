@@ -1,0 +1,165 @@
+<!--
+  CyberSentinel DLP - Wazuh Custom Rules
+  Description: Custom rules for DLP event analysis
+  Installation: Copy to /var/ossec/etc/rules/
+-->
+
+<group name="cybersentinel,dlp,">
+
+  <!-- Base DLP Event -->
+  <rule id="100100" level="3">
+    <decoded_as>dlp-event</decoded_as>
+    <description>CyberSentinel DLP: Event detected</description>
+    <group>dlp,</group>
+  </rule>
+
+  <!-- High-Confidence Data Exfiltration Blocked -->
+  <rule id="100101" level="12">
+    <if_sid>100100</if_sid>
+    <field name="dlp.classification.score">0\.9\d|1\.0</field>
+    <field name="dlp.policy.action">block</field>
+    <description>CyberSentinel DLP: High-confidence data exfiltration blocked</description>
+    <group>dlp,pci_dss_3.4,gdpr_IV_32,hipaa_164.312.a.1,</group>
+    <mitre>
+      <id>T1048</id>
+    </mitre>
+  </rule>
+
+  <!-- PCI-DSS: Credit Card (PAN) Detection -->
+  <rule id="100102" level="10">
+    <if_sid>100100</if_sid>
+    <field name="dlp.classification.label">PAN</field>
+    <description>CyberSentinel DLP: Credit card data detected</description>
+    <group>dlp,pci_dss_3.4,pci_dss_4.1,</group>
+    <mitre>
+      <id>T1005</id>
+    </mitre>
+  </rule>
+
+  <!-- GDPR: PII Detection -->
+  <rule id="100103" level="8">
+    <if_sid>100100</if_sid>
+    <field name="dlp.classification.label">PII</field>
+    <description>CyberSentinel DLP: Personal identifiable information detected</description>
+    <group>dlp,gdpr_IV_32,gdpr_II_5,</group>
+    <mitre>
+      <id>T1005</id>
+    </mitre>
+  </rule>
+
+  <!-- HIPAA: PHI Detection -->
+  <rule id="100104" level="10">
+    <if_sid>100100</if_sid>
+    <field name="dlp.classification.label">PHI</field>
+    <description>CyberSentinel DLP: Protected health information detected</description>
+    <group>dlp,hipaa_164.312.a.1,hipaa_164.312.b,</group>
+    <mitre>
+      <id>T1005</id>
+    </mitre>
+  </rule>
+
+  <!-- High Entropy Data (Potential Secrets) -->
+  <rule id="100105" level="7">
+    <if_sid>100100</if_sid>
+    <field name="dlp.classification.label">HIGH_ENTROPY</field>
+    <description>CyberSentinel DLP: High entropy data detected (potential secrets)</description>
+    <group>dlp,</group>
+    <mitre>
+      <id>T1552</id>
+    </mitre>
+  </rule>
+
+  <!-- API Keys / Secrets Detection -->
+  <rule id="100106" level="9">
+    <if_sid>100100</if_sid>
+    <field name="dlp.classification.label">API_KEY|SECRET|TOKEN</field>
+    <description>CyberSentinel DLP: API keys or secrets detected</description>
+    <group>dlp,</group>
+    <mitre>
+      <id>T1552.001</id>
+    </mitre>
+  </rule>
+
+  <!-- SSN Detection -->
+  <rule id="100107" level="9">
+    <if_sid>100100</if_sid>
+    <field name="dlp.classification.label">SSN</field>
+    <description>CyberSentinel DLP: Social Security Number detected</description>
+    <group>dlp,gdpr_IV_32,</group>
+    <mitre>
+      <id>T1005</id>
+    </mitre>
+  </rule>
+
+  <!-- Critical Severity Policy Violation -->
+  <rule id="100108" level="11">
+    <if_sid>100100</if_sid>
+    <field name="dlp.policy.severity">critical</field>
+    <description>CyberSentinel DLP: Critical policy violation</description>
+    <group>dlp,</group>
+  </rule>
+
+  <!-- Multiple Violations by Same User (Frequency) -->
+  <rule id="100109" level="10" frequency="5" timeframe="300">
+    <if_matched_sid>100101</if_matched_sid>
+    <same_field>dlp.user</same_field>
+    <description>CyberSentinel DLP: Multiple high-confidence violations by same user</description>
+    <group>dlp,</group>
+    <mitre>
+      <id>T1048</id>
+    </mitre>
+  </rule>
+
+  <!-- Data Exfiltration to External Destination -->
+  <rule id="100110" level="9">
+    <if_sid>100100</if_sid>
+    <field name="dlp.source">network</field>
+    <field name="dlp.policy.action">block</field>
+    <description>CyberSentinel DLP: Network data exfiltration blocked</description>
+    <group>dlp,</group>
+    <mitre>
+      <id>T1041</id>
+    </mitre>
+  </rule>
+
+  <!-- Cloud Connector Detection -->
+  <rule id="100111" level="7">
+    <if_sid>100100</if_sid>
+    <field name="dlp.source">cloud</field>
+    <description>CyberSentinel DLP: Cloud service data event</description>
+    <group>dlp,</group>
+  </rule>
+
+  <!-- Endpoint Agent Detection -->
+  <rule id="100112" level="6">
+    <if_sid>100100</if_sid>
+    <field name="dlp.source">endpoint</field>
+    <description>CyberSentinel DLP: Endpoint data event</description>
+    <group>dlp,</group>
+  </rule>
+
+  <!-- Data Allowed (Low Risk) -->
+  <rule id="100113" level="3">
+    <if_sid>100100</if_sid>
+    <field name="dlp.policy.action">allow</field>
+    <description>CyberSentinel DLP: Data transfer allowed</description>
+    <group>dlp,</group>
+  </rule>
+
+  <!-- Data Quarantined -->
+  <rule id="100114" level="8">
+    <if_sid>100100</if_sid>
+    <field name="dlp.policy.action">quarantine</field>
+    <description>CyberSentinel DLP: Data quarantined for review</description>
+    <group>dlp,</group>
+  </rule>
+
+  <!-- SOX: Financial Data Detection -->
+  <rule id="100115" level="9">
+    <if_sid>100100</if_sid>
+    <field name="dlp.classification.label">FINANCIAL</field>
+    <description>CyberSentinel DLP: Financial data detected</description>
+    <group>dlp,sox,</group>
+  </rule>
+
+</group>

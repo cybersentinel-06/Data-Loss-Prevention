@@ -1,0 +1,39 @@
+<!--
+  CyberSentinel DLP - Wazuh Custom Decoders
+  Description: Custom decoders for DLP events
+  Installation: Copy to /var/ossec/etc/decoders/
+-->
+
+<decoder name="dlp-event">
+  <program_name>cybersentinel-dlp</program_name>
+  <prematch>"source":"</prematch>
+</decoder>
+
+<decoder name="dlp-event-json">
+  <parent>dlp-event</parent>
+  <plugin_decoder>JSON_Decoder</plugin_decoder>
+</decoder>
+
+<decoder name="dlp-classification">
+  <parent>dlp-event</parent>
+  <regex>"classification":{"score":(\d+\.\d+),"labels":\["(\w+)"</regex>
+  <order>dlp.classification.score,dlp.classification.label</order>
+</decoder>
+
+<decoder name="dlp-policy">
+  <parent>dlp-event</parent>
+  <regex>"policy":{"id":"(\w+-\d+)","action":"(\w+)","severity":"(\w+)"</regex>
+  <order>dlp.policy.id,dlp.policy.action,dlp.policy.severity</order>
+</decoder>
+
+<decoder name="dlp-user">
+  <parent>dlp-event</parent>
+  <regex>"user":"([^"]+)"</regex>
+  <order>dlp.user</order>
+</decoder>
+
+<decoder name="dlp-source">
+  <parent>dlp-event</parent>
+  <regex>"source":"(\w+)"</regex>
+  <order>dlp.source</order>
+</decoder>

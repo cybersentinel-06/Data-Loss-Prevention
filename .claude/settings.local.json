@@ -1,0 +1,29 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(dir:*)",
+      "Bash(mkdir:*)",
+      "Bash(tree:*)",
+      "Bash(PROJECT_TREE.txt 2)",
+      "Bash(nul)",
+      "Bash(PROJECT_FILES_LIST.txt)",
+      "Bash(node --version:*)",
+      "Bash(npm --version)",
+      "Bash(npm install:*)",
+      "Bash(npm run dev:*)",
+      "Bash(findstr:*)",
+      "Bash(ls:*)",
+      "Bash(move page.tsx page_old.tsx)",
+      "Bash(move page_new.tsx page.tsx)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(git config:*)",
+      "Bash(git remote add:*)",
+      "Bash(git branch:*)",
+      "Bash(git push:*)",
+      "Bash(git checkout:*)"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}

@@ -1,0 +1,42 @@
+policy:
+  id: "pol-003-hipaa"
+  name: "HIPAA: Protected Health Information (PHI) Protection"
+  description: "Prevent unauthorized access and transmission of PHI"
+  version: "1.0.0"
+  enabled: true
+  priority: 100
+
+  compliance_tags:
+    - "HIPAA 164.312(a)(1)"
+    - "HIPAA 164.312(b)"
+    - "HIPAA 164.312(e)(1)"
+
+  conditions:
+    all:
+      - field: "classification.labels"
+        operator: "contains"
+        value: "PHI"
+      - field: "classification.score"
+        operator: ">="
+        value: 0.80
+      - field: "user_role"
+        operator: "not in"
+        value: ["healthcare_provider", "authorized_personnel"]
+
+  actions:
+    - type: "block"
+      parameters:
+        reason: "PHI access restricted to authorized personnel only"
+
+    - type: "alert"
+      parameters:
+        severity: "critical"
+        recipients:
+          - "hipaa-officer@company.com"
+          - "security-team@company.com"
+
+    - type: "log"
+      parameters:
+        siem_forward: true
+        audit_trail: true
+        retention_years: 6
