@@ -1,12 +1,8 @@
 # Multi-stage build for production-ready Next.js dashboard
 
-FROM node:18-alpine AS deps
+FROM node:18-slim AS deps
 
 # Install dependencies only when needed
-# Add retries and fallback for package installation
-RUN apk update && \
-    (apk add --no-cache libc6-compat || true) && \
-    apk add --no-cache libstdc++
 WORKDIR /app
 
 # Copy package files
@@ -16,7 +12,7 @@ COPY package.json package-lock.json* ./
 RUN npm ci
 
 # Rebuild the source code only when needed
-FROM node:18-alpine AS builder
+FROM node:18-slim AS builder
 WORKDIR /app
 
 # Copy dependencies from deps stage
@@ -33,15 +29,15 @@ ENV NODE_ENV production
 RUN npm run build
 
 # Production image, copy all the files and run next
-FROM node:18-alpine AS runner
+FROM node:18-slim AS runner
 WORKDIR /app
 
 ENV NODE_ENV production
 ENV NEXT_TELEMETRY_DISABLED 1
 
 # Create non-root user
-RUN addgroup --system --gid 1001 nodejs && \
-    adduser --system --uid 1001 nextjs
+RUN groupadd --system --gid 1001 nodejs && \
+    useradd --system --uid 1001 --gid nodejs nextjs
 
 # Copy necessary files
 COPY --from=builder /app/public ./public
