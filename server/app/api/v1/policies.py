@@ -6,11 +6,14 @@ Create, update, and manage DLP policies
 from typing import List, Dict, Any, Optional
 from datetime import datetime
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, Query
 from pydantic import BaseModel
+from sqlalchemy.ext.asyncio import AsyncSession
 import structlog
 
 from app.core.security import get_current_user, require_role
+from app.core.database import get_db
+from app.services.policy_service import PolicyService
 
 logger = structlog.get_logger()
 router = APIRouter()
@@ -43,54 +46,93 @@ class Policy(BaseModel):
 
 @router.get("/", response_model=List[Policy])
 async def get_policies(
+    skip: int = Query(0, ge=0),
+    limit: int = Query(100, ge=1, le=1000),
     enabled_only: bool = False,
     current_user: dict = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
 ):
     """
     Get all DLP policies
     """
-    # TODO: Fetch from database
-    mock_policies = [
-        {
-            "id": "pol-001",
-            "name": "Block Credit Card Exfiltration",
-            "description": "Prevent credit card numbers from being sent externally",
-            "enabled": True,
-            "priority": 100,
-            "conditions": [
-                {"field": "classification.labels", "operator": "contains", "value": "PAN"},
-                {"field": "classification.score", "operator": ">=", "value": 0.85},
-            ],
-            "actions": [
-                {"type": "block", "parameters": None},
-                {"type": "alert", "parameters": {"severity": "critical"}},
-            ],
-            "compliance_tags": ["PCI-DSS", "GDPR"],
-            "created_at": datetime.now().isoformat(),
-        }
-    ]
+    policy_service = PolicyService(db)
+    policies = await policy_service.get_all_policies(
+        skip=skip,
+        limit=limit,
+        enabled_only=enabled_only,
+    )
 
-    return mock_policies
+    return [
+        {
+            "id": str(policy.id),
+            "name": policy.name,
+            "description": policy.description,
+            "enabled": policy.enabled,
+            "priority": policy.priority,
+            "conditions": policy.conditions.get("rules", []) if isinstance(policy.conditions, dict) else [],
+            "actions": [{"type": k, "parameters": v} for k, v in policy.actions.items()] if isinstance(policy.actions, dict) else [],
+            "compliance_tags": policy.compliance_tags or [],
+            "created_at": policy.created_at,
+            "updated_at": policy.updated_at,
+            "created_by": policy.created_by,
+        }
+        for policy in policies
+    ]
 
 
 @router.post("/", response_model=Policy, status_code=status.HTTP_201_CREATED)
 async def create_policy(
     policy: Policy,
     current_user: dict = Depends(require_role("analyst")),
+    db: AsyncSession = Depends(get_db),
 ):
     """
     Create a new DLP policy
     """
-    # TODO: Validate policy
-    # TODO: Save to database
+    policy_service = PolicyService(db)
 
-    logger.info(
-        "Policy created",
-        policy_name=policy.name,
-        user=current_user["email"],
-    )
+    # Convert Pydantic models to dict format expected by service
+    conditions_dict = {
+        "match": "all",
+        "rules": [cond.dict() for cond in policy.conditions]
+    }
+    actions_dict = {action.type: action.parameters for action in policy.actions}
 
-    return policy
+    try:
+        created_policy = await policy_service.create_policy(
+            name=policy.name,
+            description=policy.description,
+            conditions=conditions_dict,
+            actions=actions_dict,
+            created_by=current_user["sub"],
+            enabled=policy.enabled,
+            priority=policy.priority,
+            compliance_tags=policy.compliance_tags,
+        )
+
+        logger.info(
+            "Policy created",
+            policy_name=policy.name,
+            policy_id=str(created_policy.id),
+            user=current_user["email"],
+        )
+
+        return {
+            "id": str(created_policy.id),
+            "name": created_policy.name,
+            "description": created_policy.description,
+            "enabled": created_policy.enabled,
+            "priority": created_policy.priority,
+            "conditions": policy.conditions,
+            "actions": policy.actions,
+            "compliance_tags": created_policy.compliance_tags or [],
+            "created_at": created_policy.created_at,
+            "updated_at": created_policy.updated_at,
+            "created_by": created_policy.created_by,
+        }
+
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
 
 
 @router.put("/{policy_id}", response_model=Policy)
@@ -98,30 +140,73 @@ async def update_policy(
     policy_id: str,
     policy: Policy,
     current_user: dict = Depends(require_role("analyst")),
+    db: AsyncSession = Depends(get_db),
 ):
     """
     Update existing DLP policy
     """
-    # TODO: Fetch and update policy in database
+    policy_service = PolicyService(db)
 
-    logger.info(
-        "Policy updated",
-        policy_id=policy_id,
-        user=current_user["email"],
-    )
+    # Convert Pydantic models to dict format
+    conditions_dict = {
+        "match": "all",
+        "rules": [cond.dict() for cond in policy.conditions]
+    }
+    actions_dict = {action.type: action.parameters for action in policy.actions}
 
-    return policy
+    try:
+        updated_policy = await policy_service.update_policy(
+            policy_id=policy_id,
+            name=policy.name,
+            description=policy.description,
+            conditions=conditions_dict,
+            actions=actions_dict,
+            enabled=policy.enabled,
+            priority=policy.priority,
+            compliance_tags=policy.compliance_tags,
+        )
+
+        if not updated_policy:
+            raise HTTPException(status_code=404, detail="Policy not found")
+
+        logger.info(
+            "Policy updated",
+            policy_id=policy_id,
+            user=current_user["email"],
+        )
+
+        return {
+            "id": str(updated_policy.id),
+            "name": updated_policy.name,
+            "description": updated_policy.description,
+            "enabled": updated_policy.enabled,
+            "priority": updated_policy.priority,
+            "conditions": policy.conditions,
+            "actions": policy.actions,
+            "compliance_tags": updated_policy.compliance_tags or [],
+            "created_at": updated_policy.created_at,
+            "updated_at": updated_policy.updated_at,
+            "created_by": updated_policy.created_by,
+        }
+
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
 
 
 @router.delete("/{policy_id}")
 async def delete_policy(
     policy_id: str,
     current_user: dict = Depends(require_role("admin")),
+    db: AsyncSession = Depends(get_db),
 ):
     """
     Delete DLP policy
     """
-    # TODO: Delete from database
+    policy_service = PolicyService(db)
+    success = await policy_service.delete_policy(policy_id)
+
+    if not success:
+        raise HTTPException(status_code=404, detail="Policy not found")
 
     logger.info(
         "Policy deleted",
@@ -136,11 +221,16 @@ async def delete_policy(
 async def enable_policy(
     policy_id: str,
     current_user: dict = Depends(require_role("analyst")),
+    db: AsyncSession = Depends(get_db),
 ):
     """
     Enable a policy
     """
-    # TODO: Update policy status in database
+    policy_service = PolicyService(db)
+    policy = await policy_service.enable_policy(policy_id)
+
+    if not policy:
+        raise HTTPException(status_code=404, detail="Policy not found")
 
     logger.info(
         "Policy enabled",
@@ -148,18 +238,23 @@ async def enable_policy(
         user=current_user["email"],
     )
 
-    return {"message": "Policy enabled successfully"}
+    return {"message": "Policy enabled successfully", "policy_id": str(policy.id)}
 
 
 @router.post("/{policy_id}/disable")
 async def disable_policy(
     policy_id: str,
     current_user: dict = Depends(require_role("analyst")),
+    db: AsyncSession = Depends(get_db),
 ):
     """
     Disable a policy
     """
-    # TODO: Update policy status in database
+    policy_service = PolicyService(db)
+    policy = await policy_service.disable_policy(policy_id)
+
+    if not policy:
+        raise HTTPException(status_code=404, detail="Policy not found")
 
     logger.info(
         "Policy disabled",
@@ -167,4 +262,4 @@ async def disable_policy(
         user=current_user["email"],
     )
 
-    return {"message": "Policy disabled successfully"}
+    return {"message": "Policy disabled successfully", "policy_id": str(policy.id)}
