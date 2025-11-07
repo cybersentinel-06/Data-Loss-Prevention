@@ -11,8 +11,8 @@ const apiClient = axios.create({
 // Add auth token to requests
 apiClient.interceptors.request.use((config) => {
   const token = useAuthStore.getState().accessToken
-  if (token) {
-    config.headers.Authorization = `Bearer ${token}`
+  if (token && config.headers) {
+    config.headers['Authorization'] = `Bearer ${token}`
   }
   return config
 })
@@ -36,7 +36,9 @@ apiClient.interceptors.response.use(
         const { access_token, refresh_token } = response.data
         useAuthStore.getState().setTokens(access_token, refresh_token)
 
-        originalRequest.headers.Authorization = `Bearer ${access_token}`
+        if (originalRequest.headers) {
+          originalRequest.headers['Authorization'] = `Bearer ${access_token}`
+        }
         return apiClient(originalRequest)
       } catch (refreshError) {
         useAuthStore.getState().logout()
