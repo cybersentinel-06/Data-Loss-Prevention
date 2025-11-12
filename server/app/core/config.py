@@ -4,7 +4,7 @@ Centralized configuration using Pydantic Settings
 """
 
 from typing import List, Optional
-from pydantic import Field, field_validator
+from pydantic import Field, field_validator, PostgresDsn, MongoDsn, RedisDsn
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -16,13 +16,13 @@ class Settings(BaseSettings):
     # Application Info
     PROJECT_NAME: str = "CyberSentinel DLP"
     PROJECT_DESCRIPTION: str = "Enterprise Data Loss Prevention Platform"
-    VERSION: str = "1.0.0"
+    VERSION: str = "2.0.0"
     ENVIRONMENT: str = Field(default="development")
     DEBUG: bool = Field(default=False)
 
     # Server Configuration
     HOST: str = Field(default="0.0.0.0")
-    PORT: int = Field(default=8000)
+    PORT: int = Field(default=55000)
     WORKERS: int = Field(default=4)
     API_V1_PREFIX: str = "/api/v1"
 
@@ -35,9 +35,9 @@ class Settings(BaseSettings):
 
     # CORS
     CORS_ORIGINS: List[str] = Field(
-        default=["http://localhost:3000", "http://0.0.0.0:3000"]
+        default=["http://localhost:3000", "http://127.0.0.1:3000"]
     )
-    ALLOWED_HOSTS: List[str] = Field(default=["*"])
+    ALLOWED_HOSTS: List[str] = Field(default=["localhost", "127.0.0.1"])
 
     # PostgreSQL Configuration
     POSTGRES_HOST: str = Field(default="localhost")
@@ -51,10 +51,14 @@ class Settings(BaseSettings):
     @property
     def DATABASE_URL(self) -> str:
         """Construct PostgreSQL connection URL"""
-        return (
-            f"postgresql+asyncpg://{self.POSTGRES_USER}:{self.POSTGRES_PASSWORD}"
-            f"@{self.POSTGRES_HOST}:{self.POSTGRES_PORT}/{self.POSTGRES_DB}"
-        )
+        return str(PostgresDsn.build(
+            scheme="postgresql+asyncpg",
+            username=self.POSTGRES_USER,
+            password=self.POSTGRES_PASSWORD,
+            host=self.POSTGRES_HOST,
+            port=self.POSTGRES_PORT,
+            path=f"/{self.POSTGRES_DB}",
+        ))
 
     # MongoDB Configuration
     MONGODB_HOST: str = Field(default="localhost")
@@ -67,11 +71,15 @@ class Settings(BaseSettings):
     @property
     def MONGODB_URL(self) -> str:
         """Construct MongoDB connection URL"""
-        return (
-            f"mongodb://{self.MONGODB_USER}:{self.MONGODB_PASSWORD}"
-            f"@{self.MONGODB_HOST}:{self.MONGODB_PORT}/{self.MONGODB_DB}"
-            f"?authSource=admin"
-        )
+        return str(MongoDsn.build(
+            scheme="mongodb",
+            username=self.MONGODB_USER,
+            password=self.MONGODB_PASSWORD,
+            host=self.MONGODB_HOST,
+            port=self.MONGODB_PORT,
+            path=f"/{self.MONGODB_DB}",
+            query="authSource=admin",
+        ))
 
     # Redis Configuration
     REDIS_HOST: str = Field(default="localhost")
@@ -83,9 +91,23 @@ class Settings(BaseSettings):
     @property
     def REDIS_URL(self) -> str:
         """Construct Redis connection URL"""
-        if self.REDIS_PASSWORD:
-            return f"redis://:{self.REDIS_PASSWORD}@{self.REDIS_HOST}:{self.REDIS_PORT}/{self.REDIS_DB}"
-        return f"redis://{self.REDIS_HOST}:{self.REDIS_PORT}/{self.REDIS_DB}"
+        return str(RedisDsn.build(
+            scheme="redis",
+            password=self.REDIS_PASSWORD,
+            host=self.REDIS_HOST,
+            port=self.REDIS_PORT,
+            path=f"/{self.REDIS_DB}",
+        ))
+
+    # OpenSearch Configuration
+    OPENSEARCH_HOST: str = Field(default="localhost")
+    OPENSEARCH_PORT: int = Field(default=9200)
+    OPENSEARCH_USER: str = Field(default="admin")
+    OPENSEARCH_PASSWORD: str = Field(default="admin")
+    OPENSEARCH_USE_SSL: bool = Field(default=True)
+    OPENSEARCH_VERIFY_CERTS: bool = Field(default=False)
+    OPENSEARCH_INDEX_PREFIX: str = Field(default="cybersentinel")
+    OPENSEARCH_RETENTION_DAYS: int = Field(default=90)
 
     # Rate Limiting
     RATE_LIMIT_ENABLED: bool = Field(default=True)

@@ -1,0 +1,435 @@
+# ============================================================================
+# CyberSentinel DLP Manager Configuration
+# Wazuh-Style Architecture
+# ============================================================================
+
+# Manager Server Configuration
+server:
+  host: 0.0.0.0
+  port: 55000
+  workers: 4
+  reload: false
+  log_level: INFO
+
+  # TLS/SSL Configuration (recommended for production)
+  tls:
+    enabled: false  # Set to true in production
+    cert_file: /etc/cybersentinel/certs/server.crt
+    key_file: /etc/cybersentinel/certs/server.key
+    ca_file: /etc/cybersentinel/certs/ca.crt
+
+  # Rate Limiting
+  rate_limit:
+    enabled: true
+    requests_per_minute: 100
+    burst: 20
+
+# Database Configurations
+databases:
+  # PostgreSQL - Users, configuration, metadata
+  postgresql:
+    host: localhost
+    port: 5432
+    database: cybersentinel_dlp
+    username: dlp_user
+    password: ${POSTGRES_PASSWORD}
+    pool_size: 20
+    max_overflow: 10
+    pool_timeout: 30
+    pool_recycle: 3600
+
+  # MongoDB - Agents, legacy event storage
+  mongodb:
+    host: localhost
+    port: 27017
+    database: cybersentinel_dlp
+    username: dlp_user
+    password: ${MONGODB_PASSWORD}
+    auth_source: admin
+    pool_size: 50
+    max_idle_time: 60000
+
+  # OpenSearch - Primary event storage and search
+  opensearch:
+    hosts:
+      - https://localhost:9200
+    username: admin
+    password: ${OPENSEARCH_PASSWORD}
+    use_ssl: true
+    verify_certs: false  # Set to true in production with proper certs
+    ssl_show_warn: false
+    timeout: 30
+    max_retries: 3
+    retry_on_timeout: true
+
+    # Index Configuration
+    index_prefix: cybersentinel
+    index_pattern: "{prefix}-events-{date}"  # cybersentinel-events-2025.01.12
+    index_rollover:
+      enabled: true
+      frequency: daily  # daily, weekly, monthly
+      retention_days: 90
+
+    # Index Settings
+    index_settings:
+      number_of_shards: 1
+      number_of_replicas: 0
+      refresh_interval: "5s"
+
+    # Index Mappings
+    index_mappings:
+      dynamic: strict
+      properties:
+        "@timestamp":
+          type: date
+        event_id:
+          type: keyword
+        agent_id:
+          type: keyword
+        event_type:
+          type: keyword
+        severity:
+          type: keyword
+        user:
+          type: text
+          fields:
+            keyword:
+              type: keyword
+        file_path:
+          type: text
+          fields:
+            keyword:
+              type: keyword
+        content:
+          type: text
+        classification:
+          type: nested
+        metadata:
+          type: object
+          enabled: true
+
+  # Redis - Cache, sessions, task queue
+  redis:
+    host: localhost
+    port: 6379
+    password: ${REDIS_PASSWORD}
+    db: 0
+    max_connections: 50
+    socket_timeout: 5
+    socket_keepalive: true
+
+    # Cache TTL settings (seconds)
+    cache_ttl:
+      default: 3600
+      agents: 300
+      policies: 600
+      users: 1800
+
+# Authentication & Authorization
+authentication:
+  # JWT Configuration
+  jwt:
+    secret: ${JWT_SECRET}
+    algorithm: HS256
+    access_token_expire_minutes: 15
+    refresh_token_expire_days: 7
+
+  # Password Policy
+  password:
+    min_length: 12
+    require_uppercase: true
+    require_lowercase: true
+    require_numbers: true
+    require_special_chars: true
+    max_age_days: 90
+
+  # Multi-Factor Authentication
+  mfa:
+    enabled: false  # Set to true for enhanced security
+    issuer: CyberSentinel DLP
+
+  # API Key Authentication (for integrations)
+  api_keys:
+    enabled: true
+    header_name: X-API-Key
+
+# Agent Management
+agents:
+  # Auto-enrollment Configuration
+  enrollment:
+    auto_approve: true  # Auto-approve agent registrations
+    require_key: false  # Require pre-shared registration key
+    id_prefix: AGENT
+    id_format: "{prefix}-{counter:04d}"  # AGENT-0001, AGENT-0002, etc.
+
+  # Heartbeat Configuration
+  heartbeat:
+    interval: 60  # seconds
+    timeout: 180  # seconds (3 missed heartbeats)
+    grace_period: 300  # seconds before marking offline
+
+  # Agent Configuration Management
+  configuration:
+    push_enabled: true  # Push config updates to agents
+    pull_interval: 300  # seconds (agents pull config every 5 min)
+    version_control: true
+
+# Event Processing
+events:
+  # Event Ingestion
+  ingestion:
+    batch_size: 100
+    batch_timeout: 5  # seconds
+    max_queue_size: 10000
+
+  # Event Processing Pipeline
+  pipeline:
+    validation: true
+    normalization: true
+    enrichment: true
+    classification: true
+    policy_evaluation: true
+    correlation: true
+
+  # Event Storage
+  storage:
+    primary: opensearch  # opensearch or mongodb
+    backup: mongodb  # optional backup storage
+    retention_days: 90
+
+  # Event Filtering (discard noisy events)
+  filters:
+    - field: event_type
+      operator: equals
+      value: heartbeat
+      action: discard
+
+# Policy Engine
+policies:
+  # Policy Directory
+  directory: /etc/cybersentinel/policies
+  file_pattern: "*.yml"
+
+  # Policy Reloading
+  reload:
+    enabled: true
+    interval: 300  # seconds
+    watch_filesystem: true
+
+  # Policy Evaluation
+  evaluation:
+    parallel: true
+    max_workers: 4
+    timeout: 10  # seconds per policy
+
+  # Default Actions
+  default_actions:
+    alert: true
+    log: true
+    block: false
+
+  # Policy Testing
+  testing:
+    enabled: true
+    dry_run: false
+
+# Classification Engine
+classification:
+  # Pattern-based Classification
+  patterns:
+    enabled: true
+    patterns_file: /etc/cybersentinel/patterns.yml
+    cache_compiled_regex: true
+
+  # ML-based Classification
+  ml:
+    enabled: true
+    model_path: /app/ml/models
+    confidence_threshold: 0.7
+    max_content_size: 10485760  # 10 MB
+
+  # Fingerprinting
+  fingerprinting:
+    enabled: true
+    algorithm: sha256  # sha256, md5, ssdeep
+    deduplicate: true
+
+# Correlation Engine
+correlation:
+  enabled: true
+  window_size: 300  # seconds
+  max_events_per_correlation: 100
+  rules_directory: /etc/cybersentinel/correlation_rules
+
+# Alerting
+alerting:
+  # Alert Channels
+  channels:
+    email:
+      enabled: false
+      smtp_host: ${SMTP_HOST}
+      smtp_port: 587
+      smtp_user: ${SMTP_USER}
+      smtp_password: ${SMTP_PASSWORD}
+      from_address: dlp-alerts@company.com
+      to_addresses:
+        - security@company.com
+
+    slack:
+      enabled: false
+      webhook_url: ${SLACK_WEBHOOK_URL}
+      channel: "#security-alerts"
+      username: CyberSentinel DLP
+
+    webhook:
+      enabled: false
+      url: ${WEBHOOK_URL}
+      method: POST
+      headers:
+        Content-Type: application/json
+
+    syslog:
+      enabled: false
+      host: ${SYSLOG_HOST}
+      port: 514
+      protocol: UDP  # UDP or TCP
+
+  # Alert Throttling
+  throttling:
+    enabled: true
+    window: 3600  # seconds
+    max_alerts_per_rule: 10
+
+  # Alert Severity Mapping
+  severity_thresholds:
+    critical:
+      alert: true
+      notify: true
+    high:
+      alert: true
+      notify: true
+    medium:
+      alert: true
+      notify: false
+    low:
+      alert: false
+      notify: false
+
+# Integrations
+integrations:
+  # SIEM Integration
+  siem:
+    wazuh:
+      enabled: false
+      host: ${WAZUH_HOST}
+      port: 55000
+      username: ${WAZUH_USER}
+      password: ${WAZUH_PASSWORD}
+
+    splunk:
+      enabled: false
+      hec_url: ${SPLUNK_HEC_URL}
+      token: ${SPLUNK_HEC_TOKEN}
+
+    elastic:
+      enabled: false
+      hosts: ${ELASTIC_HOSTS}
+      api_key: ${ELASTIC_API_KEY}
+
+  # Cloud Integrations
+  cloud:
+    aws_s3:
+      enabled: false
+      bucket: ${AWS_S3_BUCKET}
+      region: ${AWS_REGION}
+      access_key: ${AWS_ACCESS_KEY}
+      secret_key: ${AWS_SECRET_KEY}
+
+    azure_blob:
+      enabled: false
+      connection_string: ${AZURE_CONNECTION_STRING}
+      container: ${AZURE_CONTAINER}
+
+    google_storage:
+      enabled: false
+      bucket: ${GCS_BUCKET}
+      credentials_file: ${GCS_CREDENTIALS_FILE}
+
+# Logging
+logging:
+  level: INFO  # DEBUG, INFO, WARNING, ERROR, CRITICAL
+  format: json  # json or text
+
+  # File Logging
+  file:
+    enabled: true
+    path: /var/log/cybersentinel/manager.log
+    max_size_mb: 100
+    backup_count: 10
+    rotation: size  # size or time
+
+  # Syslog
+  syslog:
+    enabled: false
+    host: localhost
+    port: 514
+    facility: local0
+
+  # Structured Logging
+  structured:
+    enabled: true
+    include_timestamp: true
+    include_hostname: true
+    include_pid: true
+
+# Monitoring & Metrics
+monitoring:
+  # Prometheus Metrics
+  prometheus:
+    enabled: true
+    port: 9090
+    path: /metrics
+
+  # Health Checks
+  health_checks:
+    enabled: true
+    interval: 30  # seconds
+
+  # Performance Metrics
+  metrics:
+    collect_system_metrics: true
+    collect_database_metrics: true
+    collect_api_metrics: true
+
+# Quarantine
+quarantine:
+  enabled: true
+  path: /var/quarantine/cybersentinel
+  max_size_gb: 50
+  retention_days: 30
+  compress: true
+
+# Compliance
+compliance:
+  modes:
+    - GDPR
+    - HIPAA
+    - PCI-DSS
+  audit_log: true
+  data_retention_days: 90
+  anonymization: false
+
+# Performance Tuning
+performance:
+  max_workers: 4
+  max_connections: 100
+  request_timeout: 30
+  keep_alive_timeout: 5
+  graceful_shutdown_timeout: 10
+
+# Development/Debug
+debug:
+  enabled: false
+  profiling: false
+  detailed_errors: false
+  cors_allow_all: false

@@ -9,6 +9,14 @@ from app.api.v1 import auth, events, policies, users, dashboard, alerts, agents,
 
 api_router = APIRouter()
 
+# Health check endpoint (no authentication required)
+@api_router.get("/health")
+async def health_check():
+    """
+    Health check endpoint for monitoring and agent connectivity tests
+    """
+    return {"status": "healthy", "service": "cybersentinel-dlp"}
+
 # Include sub-routers
 api_router.include_router(auth.router, prefix="/auth", tags=["Authentication"])
 api_router.include_router(users.router, prefix="/users", tags=["Users"])

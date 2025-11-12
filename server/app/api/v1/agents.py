@@ -6,7 +6,7 @@ Manage DLP agents deployed on endpoints
 from typing import List, Dict, Any, Optional
 from datetime import datetime
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, Request
 from pydantic import BaseModel, Field, ConfigDict
 import structlog
 
@@ -25,9 +25,13 @@ class AgentBase(BaseModel):
     version: str = Field(default="1.0.0", description="Agent version")
 
 
-class AgentCreate(AgentBase):
+class AgentCreate(BaseModel):
     """Agent creation model"""
-    pass
+    agent_id: Optional[str] = Field(None, description="Custom agent ID (auto-generated if not provided)")
+    name: str = Field(..., description="Agent name/hostname")
+    os: str = Field(..., description="Operating system (windows/linux)")
+    ip_address: str = Field(..., description="Agent IP address")
+    version: str = Field(default="1.0.0", description="Agent version")
 
 
 class Agent(AgentBase):
@@ -81,9 +85,9 @@ async def list_agents(
     agents = []
 
     async for agent_doc in agents_cursor:
-        # Convert MongoDB document to Agent model
-        agent_doc["agent_id"] = str(agent_doc["_id"])
-        del agent_doc["_id"]
+        # Remove MongoDB _id field
+        if "_id" in agent_doc:
+            del agent_doc["_id"]
         agents.append(Agent(**agent_doc))
 
     logger.info("Listed agents", count=len(agents), filters=query)
@@ -92,30 +96,46 @@ async def list_agents(
 
 @router.post("/", response_model=Agent, status_code=status.HTTP_201_CREATED)
 async def register_agent(
+    request: Request,
     agent: AgentCreate,
-    current_user: dict = Depends(get_current_user),
 ) -> Agent:
     """
-    Register a new DLP agent
+    Register a new DLP agent (public endpoint - no auth required for agent self-registration)
     """
     db = get_mongodb()
     agents_collection = db["agents"]
 
-    # Create agent document
+    # Extract agent_id from raw request body (workaround for Pydantic not picking up the field)
+    body = await request.json()
+    provided_agent_id = body.get("agent_id")
+
+    # Use provided agent_id or generate one from name
+    if provided_agent_id:
+        agent_id = provided_agent_id
+    else:
+        agent_id = f"{agent.os.upper()}-{agent.name.replace(' ', '-')}"
+
+    # Create agent document with custom agent_id
     now = datetime.utcnow()
     agent_doc = {
-        **agent.model_dump(),
+        "agent_id": agent_id,
+        "name": agent.name,
+        "os": agent.os,
+        "ip_address": agent.ip_address,
+        "version": agent.version,
         "status": "online",
         "last_seen": now,
         "created_at": now,
     }
 
-    # Insert into database
-    result = await agents_collection.insert_one(agent_doc)
-    agent_doc["agent_id"] = str(result.inserted_id)
-    del agent_doc["_id"]
+    # Upsert - update if exists, insert if new
+    await agents_collection.update_one(
+        {"agent_id": agent_id},
+        {"$set": agent_doc},
+        upsert=True
+    )
 
-    logger.info("Agent registered", agent_id=agent_doc["agent_id"], name=agent.name)
+    logger.info("Agent registered", agent_id=agent_id, name=agent.name)
     return Agent(**agent_doc)
 
 
@@ -130,8 +150,7 @@ async def get_agent(
     db = get_mongodb()
     agents_collection = db["agents"]
 
-    from bson import ObjectId
-    agent_doc = await agents_collection.find_one({"_id": ObjectId(agent_id)})
+    agent_doc = await agents_collection.find_one({"agent_id": agent_id})
 
     if not agent_doc:
         raise HTTPException(
@@ -139,8 +158,9 @@ async def get_agent(
             detail=f"Agent {agent_id} not found"
         )
 
-    agent_doc["agent_id"] = str(agent_doc["_id"])
-    del agent_doc["_id"]
+    # Remove MongoDB _id field
+    if "_id" in agent_doc:
+        del agent_doc["_id"]
 
     return Agent(**agent_doc)
 
@@ -148,17 +168,15 @@ async def get_agent(
 @router.put("/{agent_id}/heartbeat")
 async def agent_heartbeat(
     agent_id: str,
-    current_user: dict = Depends(get_current_user),
 ) -> Dict[str, Any]:
     """
-    Update agent heartbeat (called by agents periodically)
+    Update agent heartbeat (public endpoint - no auth required for agents)
     """
     db = get_mongodb()
     agents_collection = db["agents"]
 
-    from bson import ObjectId
     result = await agents_collection.update_one(
-        {"_id": ObjectId(agent_id)},
+        {"agent_id": agent_id},
         {
             "$set": {
                 "last_seen": datetime.utcnow(),
@@ -188,8 +206,7 @@ async def delete_agent(
     db = get_mongodb()
     agents_collection = db["agents"]
 
-    from bson import ObjectId
-    result = await agents_collection.delete_one({"_id": ObjectId(agent_id)})
+    result = await agents_collection.delete_one({"agent_id": agent_id})
 
     if result.deleted_count == 0:
         raise HTTPException(

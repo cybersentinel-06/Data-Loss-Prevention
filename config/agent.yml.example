@@ -1,0 +1,348 @@
+# ============================================================================
+# CyberSentinel DLP Agent Configuration
+# Cross-platform (Windows/Linux) Python Agent
+# ============================================================================
+
+# Agent Identity
+agent:
+  # Agent ID (auto-assigned by manager during registration)
+  id: ""  # Leave empty for auto-enrollment
+
+  # Agent Name (defaults to hostname if not specified)
+  name: "${HOSTNAME}"
+
+  # Manager Connection
+  manager_url: "https://YOUR_MANAGER_IP:55000"
+
+  # Registration Key (optional, if manager requires it)
+  registration_key: ""
+
+  # Agent Version (auto-populated)
+  version: "2.0.0"
+
+# Manager Communication
+communication:
+  # Connection Settings
+  timeout: 30  # seconds
+  retry_attempts: 3
+  retry_delay: 5  # seconds
+  keep_alive: true
+
+  # TLS/SSL
+  tls:
+    enabled: true
+    verify_certs: false  # Set to true in production
+    cert_file: ""  # Client certificate (optional)
+    key_file: ""   # Client key (optional)
+
+  # Heartbeat
+  heartbeat:
+    interval: 60  # seconds
+    enabled: true
+
+  # Event Reporting
+  events:
+    batch_size: 100
+    batch_interval: 30  # seconds
+    queue_max_size: 1000
+    compression: true
+
+# File System Monitoring
+monitoring:
+  file_system:
+    enabled: true
+
+    # Monitored Paths
+    paths:
+      # Windows paths (use forward slashes or escaped backslashes)
+      - "C:/Users/${USERNAME}/Desktop"
+      - "C:/Users/${USERNAME}/Documents"
+      - "C:/Users/${USERNAME}/Downloads"
+      - "C:/Users/Public/Documents"
+
+      # Linux paths (uncomment for Linux agents)
+      # - "/home/${USER}/Desktop"
+      # - "/home/${USER}/Documents"
+      # - "/home/${USER}/Downloads"
+      # - "/tmp"
+      # - "/var/www"
+
+    # File Extensions to Monitor
+    extensions:
+      - .pdf
+      - .docx
+      - .xlsx
+      - .pptx
+      - .txt
+      - .csv
+      - .json
+      - .xml
+      - .sql
+      - .zip
+      - .rar
+      - .7z
+
+    # Exclusion Patterns (glob patterns)
+    exclude_patterns:
+      - "*.tmp"
+      - "*.log"
+      - "~$*"
+      - "*.swp"
+      - "*.bak"
+      - "__pycache__/*"
+      - "node_modules/*"
+      - ".git/*"
+
+    # Events to Monitor
+    events:
+      create: true
+      modify: true
+      delete: true
+      move: true
+      copy: true  # Windows only
+      access: false  # Disabled by default (high volume)
+
+    # Content Scanning
+    scan_content: true
+    max_file_size_mb: 10  # Skip files larger than this
+
+  # Clipboard Monitoring
+  clipboard:
+    enabled: true
+    scan_interval: 5  # seconds
+    max_content_size_kb: 100
+
+    # Text Patterns to Detect
+    patterns:
+      - credit_card
+      - ssn
+      - email
+      - phone
+      - api_key
+
+  # USB Device Monitoring
+  usb:
+    enabled: true
+
+    # USB Actions to Monitor
+    actions:
+      connect: true
+      disconnect: true
+      file_transfer: true
+
+    # USB Block Policy
+    block:
+      enabled: false
+      allowed_devices: []  # List of allowed USB device IDs
+      block_message: "USB device blocked by DLP policy"
+
+  # Network Monitoring (optional, resource-intensive)
+  network:
+    enabled: false
+
+    # Protocols to Monitor
+    protocols:
+      - http
+      - https
+      - smtp
+      - ftp
+
+    # Network Events
+    events:
+      upload: true
+      download: true
+      email_send: true
+
+    # Content Inspection
+    inspect_content: true
+    ssl_interception: false  # Requires proper SSL setup
+
+  # Process Monitoring (optional)
+  process:
+    enabled: false
+
+    # Applications to Monitor
+    applications:
+      - outlook.exe
+      - chrome.exe
+      - firefox.exe
+      - slack.exe
+
+    # Process Events
+    events:
+      start: true
+      stop: true
+      network_activity: true
+
+  # Print Job Monitoring (Windows only)
+  print:
+    enabled: false
+    capture_content: true
+    max_pages: 100
+
+  # Screenshot Detection (optional)
+  screenshot:
+    enabled: false
+    detect_tools:
+      - SnippingTool.exe
+      - ScreenCapture.exe
+      - Greenshot.exe
+
+# Local Classification
+classification:
+  enabled: true
+
+  # Maximum file size for local classification
+  max_file_size_mb: 10
+
+  # Pattern-based Classification
+  patterns:
+    enabled: true
+    patterns_file: patterns.yml  # Local cache of patterns
+
+    # Common Patterns
+    credit_card:
+      enabled: true
+      regex: '\b(?:\d{4}[\s-]?){3}\d{4}\b'
+      severity: critical
+
+    ssn:
+      enabled: true
+      regex: '\b\d{3}-\d{2}-\d{4}\b'
+      severity: critical
+
+    email:
+      enabled: true
+      regex: '\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b'
+      severity: medium
+
+    phone:
+      enabled: true
+      regex: '\b\d{3}[-.]?\d{3}[-.]?\d{4}\b'
+      severity: low
+
+    api_key:
+      enabled: true
+      regex: '\b[A-Za-z0-9_-]{32,}\b'
+      severity: high
+
+  # ML-based Classification (optional, requires model file)
+  ml:
+    enabled: false
+    model_file: classifier_model.pkl
+    confidence_threshold: 0.7
+
+  # File Type Detection
+  file_types:
+    use_magic: true  # Use magic bytes instead of extension
+    verify_extension: true
+
+# Local Cache
+cache:
+  enabled: true
+  max_size_mb: 100
+  ttl: 3600  # seconds
+  cache_patterns: true
+  cache_classifications: true
+
+# Logging
+logging:
+  # Log Level
+  level: INFO  # DEBUG, INFO, WARNING, ERROR, CRITICAL
+
+  # Log File
+  file:
+    enabled: true
+    path: cybersentinel_agent.log  # Windows: C:\Program Files\CyberSentinel\cybersentinel_agent.log
+                                   # Linux: /var/log/cybersentinel/agent.log
+    max_size_mb: 50
+    backup_count: 5
+    rotation: size  # size or time
+
+  # Console Logging (for debugging)
+  console:
+    enabled: false
+
+  # Log Format
+  format: json  # json or text
+
+# Performance
+performance:
+  # CPU & Memory Limits
+  max_cpu_percent: 10
+  max_memory_mb: 200
+
+  # Thread Pool
+  worker_threads: 4
+
+  # Queue Sizes
+  event_queue_size: 1000
+  upload_queue_size: 500
+
+  # Batch Processing
+  batch_processing: true
+  batch_delay: 30  # seconds
+
+# Error Handling
+error_handling:
+  # Retry Logic
+  max_retries: 3
+  retry_delay: 5  # seconds
+  exponential_backoff: true
+
+  # Failover
+  offline_mode: true  # Continue monitoring even if manager is unreachable
+  offline_cache_size_mb: 500  # Cache events locally when offline
+
+  # Self-Healing
+  restart_on_error: true
+  max_restart_attempts: 3
+
+# Security
+security:
+  # Agent Authentication
+  auth_token: ""  # Auto-populated after registration
+
+  # Tamper Protection
+  tamper_protection: true
+  verify_binary: true
+
+  # Secure Storage
+  encrypt_cache: true
+  encrypt_logs: false
+
+# Updates
+updates:
+  # Auto-update Configuration
+  auto_update: true
+  check_interval: 86400  # seconds (24 hours)
+  update_url: "https://updates.cybersentinel.com/agent"
+
+# Platform-Specific Settings
+platform:
+  windows:
+    # Windows Service
+    service_name: CyberSentinelDLP
+    service_display_name: CyberSentinel DLP Agent
+    service_description: Data Loss Prevention agent for endpoint monitoring
+
+    # Windows-specific Monitoring
+    registry_monitoring: false
+    wmi_monitoring: true
+
+  linux:
+    # Systemd Service
+    service_name: cybersentinel-agent
+    service_description: CyberSentinel DLP Agent
+
+    # Linux-specific Monitoring
+    inotify_watches: 8192
+    use_fanotify: false  # Requires root
+
+# Development/Debug
+debug:
+  enabled: false
+  verbose: false
+  profile: false
+  dump_events: false
+  test_mode: false

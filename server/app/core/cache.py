@@ -51,7 +51,7 @@ async def close_cache() -> None:
     """
     global redis_client
 
-    if redis_client:
+    if redis_client is not None:
         await redis_client.close()
         logger.info("Redis connection closed")
 
@@ -60,7 +60,7 @@ def get_cache() -> aioredis.Redis:
     """
     Get Redis client for dependency injection
     """
-    if not redis_client:
+    if redis_client is None:
         raise RuntimeError("Redis not initialized")
     return redis_client
 

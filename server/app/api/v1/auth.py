@@ -3,10 +3,10 @@ Authentication API Endpoints
 User login, registration, token refresh
 """
 
-from datetime import timedelta
+from datetime import datetime, timedelta
 from typing import Dict
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, Request
 from fastapi.security import OAuth2PasswordRequestForm
 from pydantic import BaseModel, EmailStr
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -19,10 +19,14 @@ from app.core.security import (
     verify_password,
     validate_password_strength,
     decode_token,
+    get_current_user,
 )
 from app.core.config import settings
 from app.core.database import get_db
+from app.core.cache import redis_client
 from app.services.user_service import UserService
+from app.services.blacklist_service import TokenBlacklistService
+from app.models.user import User
 
 logger = structlog.get_logger()
 router = APIRouter()
@@ -143,7 +147,10 @@ async def login(
 
 
 @router.post("/refresh", response_model=TokenResponse)
-async def refresh_token(request: RefreshTokenRequest):
+async def refresh_token(
+    request: RefreshTokenRequest,
+    db: AsyncSession = Depends(get_db)
+):
     """
     Refresh access token using refresh token
     """
@@ -156,25 +163,40 @@ async def refresh_token(request: RefreshTokenRequest):
                 detail="Invalid refresh token",
             )
 
+        user_id = payload.get("sub")
+        if not user_id:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid refresh token",
+            )
+
+        user_service = UserService(db)
+        user = await user_service.get_user_by_id(user_id)
+        if not user:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="User not found",
+            )
+
         # Create new tokens
         access_token = create_access_token(
             data={
-                "sub": payload["sub"],
-                "email": payload["email"],
-                "role": payload.get("role", "viewer"),
+                "sub": str(user.id),
+                "email": user.email,
+                "role": user.role,
             }
         )
 
-        refresh_token = create_refresh_token(
+        new_refresh_token = create_refresh_token(
             data={
-                "sub": payload["sub"],
-                "email": payload["email"],
+                "sub": str(user.id),
+                "email": user.email,
             }
         )
 
         return {
             "access_token": access_token,
-            "refresh_token": refresh_token,
+            "refresh_token": new_refresh_token,
             "token_type": "bearer",
         }
 
@@ -187,9 +209,17 @@ async def refresh_token(request: RefreshTokenRequest):
 
 
 @router.post("/logout")
-async def logout():
+async def logout(
+    request: Request,
+    current_user: User = Depends(get_current_user)
+):
     """
     User logout
     """
-    # TODO: Invalidate token (add to blacklist in Redis)
+    token = request.headers["authorization"].split(" ")[1]
+    blacklist_service = TokenBlacklistService(redis_client)
+    payload = decode_token(token)
+    expires_in = timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
+    await blacklist_service.add_to_blacklist(token, expires_in)
+    logger.info("User logged out", email=current_user.email)
     return {"message": "Logged out successfully"}

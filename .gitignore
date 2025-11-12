@@ -48,6 +48,30 @@ out/
 # IDE
 .vscode/
 .idea/
+
+# Temporary files
+*.tmp.*
+*.tmp
+.claude/settings.local.json.tmp.*
+
+# Test/Debug scripts (keep verify_github_ready.ps1)
+check_*.sh
+check_*.ps1
+test_*.ps1
+verify_agent*.ps1
+verify_complete.ps1
+quick_*.ps1
+final_*.ps1
+manual_*.ps1
+restart_*.sh
+FIX_*.sh
+
+# Unwanted files
+nul
+openapi.json
+
+# Development documentation (session notes)
+.development-docs/
 *.swp
 *.swo
 *~

@@ -5,14 +5,21 @@ JWT tokens, password hashing, OAuth2
 
 from datetime import datetime, timedelta
 from typing import Optional, Dict, Any
+import uuid
 
 from jose import JWTError, jwt
 from passlib.context import CryptContext
 from fastapi import Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
 import structlog
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
+from app.core.database import get_db
+from app.core.cache import redis_client
+from app.services.blacklist_service import TokenBlacklistService
+from app.services.user_service import UserService
+from app.models.user import User
 
 logger = structlog.get_logger()
 
@@ -56,6 +63,7 @@ def create_access_token(
     to_encode.update({
         "exp": expire,
         "iat": datetime.utcnow(),
+        "jti": str(uuid.uuid4()),
         "type": "access"
     })
 
@@ -78,6 +86,7 @@ def create_refresh_token(data: Dict[str, Any]) -> str:
     to_encode.update({
         "exp": expire,
         "iat": datetime.utcnow(),
+        "jti": str(uuid.uuid4()),
         "type": "refresh"
     })
 
@@ -110,10 +119,20 @@ def decode_token(token: str) -> Dict[str, Any]:
         )
 
 
-async def get_current_user(token: str = Depends(oauth2_scheme)) -> Dict[str, Any]:
+async def get_current_user(
+    token: str = Depends(oauth2_scheme),
+    db: AsyncSession = Depends(get_db)
+) -> User:
     """
     Get current user from JWT token
     """
+    blacklist_service = TokenBlacklistService(redis_client)
+    if await blacklist_service.is_blacklisted(token):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Token has been revoked",
+        )
+
     payload = decode_token(token)
 
     user_id: str = payload.get("sub")
@@ -123,20 +142,69 @@ async def get_current_user(token: str = Depends(oauth2_scheme)) -> Dict[str, Any
             detail="Could not validate credentials",
         )
 
-    # TODO: Load user from database
-    return {
-        "id": user_id,
-        "email": payload.get("email"),
-        "role": payload.get("role"),
-    }
+    user_service = UserService(db)
+    user = await user_service.get_user_by_id(user_id)
+    if user is None:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="User not found",
+        )
+
+    return user
+
+
+async def optional_auth(
+    token: Optional[str] = Depends(oauth2_scheme),
+    db: AsyncSession = Depends(get_db)
+) -> Optional[Dict[str, Any]]:
+    """
+    Optional authentication for endpoints that can work with or without auth
+    (e.g., agent endpoints that don't require authentication)
+
+    Returns user dict if authenticated, None otherwise
+    """
+    if not token:
+        return None
+
+    try:
+        # Check blacklist
+        blacklist_service = TokenBlacklistService(redis_client)
+        if await blacklist_service.is_blacklisted(token):
+            return None
+
+        # Decode token
+        payload = decode_token(token)
+        user_id: str = payload.get("sub")
+
+        if user_id is None:
+            return None
+
+        # Get user
+        user_service = UserService(db)
+        user = await user_service.get_user_by_id(user_id)
+
+        if user is None:
+            return None
+
+        # Return user as dict
+        return {
+            "id": user.id,
+            "email": user.email,
+            "role": user.role
+        }
+
+    except Exception as e:
+        # If any error occurs, just return None (no auth)
+        logger.debug("Optional auth failed, continuing without auth", error=str(e))
+        return None
 
 
 def require_role(required_role: str):
     """
     Dependency factory to check user role
     """
-    async def role_checker(current_user: Dict = Depends(get_current_user)):
-        user_role = current_user.get("role", "")
+    async def role_checker(current_user: User = Depends(get_current_user)):
+        user_role = current_user.role
 
         # Role hierarchy: admin > analyst > viewer
         role_hierarchy = {"admin": 3, "analyst": 2, "viewer": 1}

@@ -5,19 +5,27 @@ FROM python:3.11-slim as builder
 # Set working directory
 WORKDIR /app
 
-# Install system dependencies
+# Install system dependencies required for building Python packages
 RUN apt-get update && apt-get install -y \
     gcc \
     g++ \
     libpq-dev \
+    wget \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy requirements
+# Copy requirements and constraints
 COPY requirements.txt .
+COPY constraints.txt .
 
 # Install Python dependencies
-RUN pip install --no-cache-dir --upgrade pip && \
-    pip install --no-cache-dir -r requirements.txt
+RUN pip install --no-cache-dir --upgrade pip==24.0 setuptools wheel && \
+    pip install --no-cache-dir --constraint constraints.txt -r requirements.txt
+
+# Verify critical packages are installed correctly
+RUN python -c "import numpy; print(f'NumPy version: {numpy.__version__}')" && \
+    python -c "import tensorflow; print(f'TensorFlow version: {tensorflow.__version__}')" && \
+    python -c "import torch; print(f'PyTorch version: {torch.__version__}')" && \
+    python -c "import pandas; print(f'Pandas version: {pandas.__version__}')"
 
 # Production stage
 FROM python:3.11-slim
@@ -55,5 +63,8 @@ EXPOSE 8000
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
     CMD curl -f http://localhost:8000/health || exit 1
 
+# Set default number of workers
+ENV UVICORN_WORKERS=${UVICORN_WORKERS:-4}
+
 # Run application
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "4"]
+CMD uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers ${UVICORN_WORKERS}

@@ -5,10 +5,11 @@ Enterprise-grade Data Loss Prevention Platform
 
 import logging
 import sys
+import asyncio
 from contextlib import asynccontextmanager
 from typing import AsyncGenerator
 
-from fastapi import FastAPI, Request, status
+from fastapi import FastAPI, Request, status, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
@@ -20,6 +21,7 @@ from app.core.config import settings
 from app.core.logging import setup_logging
 from app.core.database import init_databases, close_databases
 from app.core.cache import init_cache, close_cache
+from app.core.opensearch import init_opensearch, close_opensearch
 from app.middleware.rate_limit import RateLimitMiddleware
 from app.middleware.request_id import RequestIDMiddleware
 from app.middleware.security import SecurityHeadersMiddleware
@@ -47,10 +49,15 @@ async def lifespan(app: FastAPI) -> AsyncGenerator:
         await init_cache()
         logger.info("Cache initialized successfully")
 
+        # Initialize OpenSearch
+        await init_opensearch()
+        logger.info("OpenSearch initialized successfully")
+
         # Additional startup tasks
         logger.info("Server startup complete",
                    environment=settings.ENVIRONMENT,
-                   debug=settings.DEBUG)
+                   debug=settings.DEBUG,
+                   port=settings.PORT)
 
         yield
 
@@ -58,6 +65,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator:
         # Shutdown
         logger.info("Shutting down CyberSentinel DLP Server")
 
+        await close_opensearch()
         await close_cache()
         await close_databases()
 
@@ -191,12 +199,44 @@ async def readiness_check() -> dict:
     """
     Readiness check endpoint for Kubernetes
     """
-    # TODO: Add database connection checks
-    return {
-        "status": "ready",
-        "database": "connected",
-        "cache": "connected",
-    }
+    from app.core.database import postgres_engine, mongodb_client
+    from app.core.cache import redis_client
+    from app.core.opensearch import opensearch_client
+    from sqlalchemy import text
+
+    try:
+        # Check PostgreSQL connection
+        if postgres_engine:
+            async with postgres_engine.begin() as conn:
+                await conn.execute(text("SELECT 1"))
+
+        # Check MongoDB connection
+        if mongodb_client:
+            await mongodb_client.admin.command("ping")
+
+        # Check Redis connection
+        if redis_client:
+            await redis_client.ping()
+
+        # Check OpenSearch connection
+        if opensearch_client:
+            await opensearch_client.info()
+
+        return {
+            "status": "ready",
+            "database": "connected",
+            "cache": "connected",
+            "search": "connected",
+        }
+    except Exception as e:
+        logger.error("Readiness check failed", error=str(e))
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail={
+                "status": "unready",
+                "error": str(e),
+            },
+        )
 
 
 # Include API routers

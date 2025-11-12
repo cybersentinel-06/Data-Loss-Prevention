@@ -3,11 +3,11 @@ DLP Events API Endpoints
 Query, filter, and manage DLP events
 """
 
-from typing import List, Optional
+from typing import List, Optional, Dict, Any
 from datetime import datetime
 
-from fastapi import APIRouter, Depends, Query, HTTPException
-from pydantic import BaseModel
+from fastapi import APIRouter, Depends, Query, HTTPException, status
+from pydantic import BaseModel, Field
 import structlog
 
 from app.core.security import get_current_user
@@ -15,6 +15,17 @@ from app.core.database import get_mongodb
 
 logger = structlog.get_logger()
 router = APIRouter()
+
+
+class EventCreate(BaseModel):
+    """Event creation model for agents"""
+    event_id: str = Field(..., description="Unique event ID")
+    event_type: str = Field(..., description="Event type")
+    severity: str = Field(..., description="Event severity")
+    agent_id: str = Field(..., description="Agent ID that detected the event")
+    source_type: str = Field(default="endpoint", description="Source type")
+    file_path: Optional[str] = Field(None, description="File path if applicable")
+    classification: Optional[Dict[str, Any]] = Field(None, description="Classification data")
 
 
 class DLPEvent(BaseModel):
@@ -40,6 +51,46 @@ class EventQueryParams(BaseModel):
     source: Optional[List[str]] = None
     user_email: Optional[str] = None
     blocked_only: bool = False
+
+
+@router.post("/", status_code=status.HTTP_201_CREATED)
+async def create_event(
+    event: EventCreate,
+) -> Dict[str, Any]:
+    """
+    Create a new DLP event (public endpoint - no auth required for agents)
+    """
+    db = get_mongodb()
+    events_collection = db["dlp_events"]
+
+    # Create event document
+    event_doc = {
+        "id": event.event_id,
+        "timestamp": datetime.utcnow(),
+        "event_type": event.event_type,
+        "severity": event.severity,
+        "agent_id": event.agent_id,
+        "source": event.source_type,
+        "source_type": event.source_type,
+        "user_email": "agent@system",  # Default for agent-generated events
+        "classification_score": 0.0,
+        "classification_labels": [],
+        "policy_id": None,
+        "action_taken": "logged",
+        "file_path": event.file_path,
+        "destination": None,
+        "blocked": False,
+    }
+
+    # Add classification data if provided
+    if event.classification:
+        event_doc["classification"] = event.classification
+
+    # Insert into database
+    await events_collection.insert_one(event_doc)
+
+    logger.info("Event created", event_id=event.event_id, agent_id=event.agent_id, event_type=event.event_type)
+    return {"status": "success", "event_id": event.event_id}
 
 
 @router.get("/", response_model=List[DLPEvent])

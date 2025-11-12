@@ -100,12 +100,12 @@ async def close_databases() -> None:
     global postgres_engine, mongodb_client
 
     # Close PostgreSQL
-    if postgres_engine:
+    if postgres_engine is not None:
         await postgres_engine.dispose()
         logger.info("PostgreSQL connection closed")
 
     # Close MongoDB
-    if mongodb_client:
+    if mongodb_client is not None:
         mongodb_client.close()
         logger.info("MongoDB connection closed")
 
@@ -133,7 +133,7 @@ def get_mongodb() -> AsyncIOMotorDatabase:
     """
     Get MongoDB database for dependency injection
     """
-    if not mongodb_database:
+    if mongodb_database is None:
         raise RuntimeError("MongoDB not initialized")
     return mongodb_database
 
