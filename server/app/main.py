@@ -48,9 +48,19 @@ async def _auto_init_schema_and_admin():
     import app.models.onedrive  # noqa: F401
     import app.models.classified_file  # noqa: F401
 
-    async with _db.postgres_engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
-    logger.info("Database schema verified / created")
+    # Check if tables already exist (avoid re-creating ENUM types which crashes asyncpg)
+    async with _db.postgres_engine.connect() as conn:
+        result = await conn.execute(
+            text("SELECT EXISTS(SELECT 1 FROM information_schema.tables WHERE table_name='users')")
+        )
+        tables_exist = result.scalar()
+
+    if not tables_exist:
+        async with _db.postgres_engine.begin() as conn:
+            await conn.run_sync(Base.metadata.create_all)
+        logger.info("Database tables created")
+    else:
+        logger.info("Database tables already exist, skipping creation")
 
     # Seed default admin if no users exist yet
     async with _db.postgres_session_factory() as session:
@@ -62,8 +72,8 @@ async def _auto_init_schema_and_admin():
             hashed = get_password_hash("admin")
             await session.execute(
                 text(
-                    "INSERT INTO users (id, email, hashed_password, full_name, role, organization, is_active, is_verified) "
-                    "VALUES (gen_random_uuid(), 'admin', :pw, 'Administrator', 'ADMIN', 'CyberSentinel', TRUE, TRUE)"
+                    "INSERT INTO users (id, email, hashed_password, full_name, role, organization, is_active, is_verified, created_at, updated_at) "
+                    "VALUES (gen_random_uuid(), 'admin', :pw, 'Administrator', 'ADMIN', 'CyberSentinel', TRUE, TRUE, NOW(), NOW())"
                 ),
                 {"pw": hashed},
             )
