@@ -61,7 +61,7 @@ No source code checkout. No build step. Just pull and run.
 | API Server | `http://<server-ip>:55000` |
 | API Docs (Swagger) | `http://<server-ip>:55000/docs` |
 
-**Default credentials:** `admin` / `admin`
+**Default credentials:** username `admin` / password `admin` (created automatically on first boot)
 
 ---
 

@@ -19,7 +19,7 @@ import structlog
 
 from app.core.config import settings
 from app.core.logging import setup_logging
-from app.core.database import init_databases, close_databases
+from app.core.database import init_databases, close_databases, postgres_engine, Base
 from app.core.cache import init_cache, close_cache
 from app.core.opensearch import init_opensearch, close_opensearch
 from app.middleware.rate_limit import RateLimitMiddleware
@@ -30,6 +30,47 @@ from app.api.v1 import api_router
 # Setup structured logging
 setup_logging()
 logger = structlog.get_logger()
+
+
+async def _auto_init_schema_and_admin():
+    """Create tables if missing and seed the default admin user on first boot."""
+    from sqlalchemy import text
+    from app.core.security import get_password_hash
+
+    # Import all models so Base.metadata knows about them
+    import app.models.user  # noqa: F401
+    import app.models.agent  # noqa: F401
+    import app.models.policy  # noqa: F401
+    import app.models.event  # noqa: F401
+    import app.models.alert  # noqa: F401
+    import app.models.google_drive  # noqa: F401
+    import app.models.onedrive  # noqa: F401
+    import app.models.classified_file  # noqa: F401
+
+    async with postgres_engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+    logger.info("Database schema verified / created")
+
+    # Seed default admin if no users exist yet
+    from app.core.database import postgres_session_factory
+    async with postgres_session_factory() as session:
+        result = await session.execute(
+            text("SELECT COUNT(*) FROM users")
+        )
+        user_count = result.scalar()
+        if user_count == 0:
+            hashed = get_password_hash("admin")
+            await session.execute(
+                text(
+                    "INSERT INTO users (id, email, hashed_password, full_name, role, organization, is_active, is_verified) "
+                    "VALUES (gen_random_uuid(), 'admin', :pw, 'Administrator', 'ADMIN', 'CyberSentinel', TRUE, TRUE)"
+                ),
+                {"pw": hashed},
+            )
+            await session.commit()
+            logger.info("Default admin user created (username: admin, password: admin)")
+        else:
+            logger.info("Users table already populated, skipping admin seed")
 
 
 @asynccontextmanager
@@ -44,6 +85,9 @@ async def lifespan(app: FastAPI) -> AsyncGenerator:
         # Initialize databases
         await init_databases()
         logger.info("Databases initialized successfully")
+
+        # Auto-create tables and seed default admin user on first boot
+        await _auto_init_schema_and_admin()
 
         # Initialize cache
         await init_cache()
