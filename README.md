@@ -5,7 +5,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.104.1-009688.svg)](https://fastapi.tiangolo.com)
-[![Test Coverage](https://img.shields.io/badge/coverage-87%25-brightgreen.svg)](https://github.com/effaaykhan/cybersentinel-dlp)
+[![Test Coverage](https://img.shields.io/badge/coverage-87%25-brightgreen.svg)](https://github.com/cybersentinel-06/Data-Loss-Prevention)
 
 A production-ready Data Loss Prevention platform with ML-based PII detection, multi-channel monitoring, automated response actions, and enterprise SIEM integration.
 
@@ -136,58 +136,31 @@ CyberSentinel DLP is a comprehensive data loss prevention platform designed for 
 
 ---
 
-## Quick Start with Docker
+## Quick Start — One-Command Install
 
-The easiest way to deploy CyberSentinel DLP is using Docker Compose.
-
-### Prerequisites
-
-- Docker 20.10+ and Docker Compose 2.0+
-- 4GB+ RAM
-- 20GB+ disk space
-
-### 5-Minute Installation
+The fastest way to deploy the DLP server. Run this single command on any machine with **Python 3.8+** and **Docker**:
 
 ```bash
-# 1. Clone the repository
-git clone https://github.com/effaaykhan/Data-Loss-Prevention.git
-cd Data-Loss-Prevention
-
-# 2. Configure environment (set your host for API/dashboard)
-cp .env.example .env
-# For local/WSL (inside compose): keep localhost defaults.
-# For remote deploys: set these to your host/IP before build:
-#   CORS_ORIGINS=["http://<HOST>:3000"]
-#   VITE_API_URL=http://<HOST>:55000/api/v1
-#   VITE_WS_URL=ws://<HOST>:55000/ws
-nano .env  # Edit database passwords, JWT secret, etc.
-
-# 3. Start all services
-docker-compose up -d
-
-# 4. Initialize database
-docker-compose exec server python init_db.py
-
-# 5. Verify services are running
-docker-compose ps
+curl -sLO https://raw.githubusercontent.com/cybersentinel-06/Data-Loss-Prevention/main/install_dlp_server.py && python3 install_dlp_server.py --build --start
 ```
+
+This will:
+1. Download only the server-relevant files (API, dashboard, databases, configs)
+2. Generate `.env` with random secrets and auto-detected host IP
+3. Build all Docker images
+4. Start the full stack (PostgreSQL, MongoDB, Redis, OpenSearch, FastAPI, React dashboard)
+
+> **Flags:** Omit `--build --start` to download files only and build/start later manually.
+> Use `python3 install_dlp_server.py /opt/cybersentinel --build --start` to install to a custom path.
 
 ### Access the Platform
 
-- **API Server**: http://localhost:8000
-- **API Docs**: http://localhost:8000/docs
-- **Dashboard**: http://localhost:3000 (if enabled)
-- **OpenSearch**: http://localhost:9200
-- **Prometheus**: http://localhost:9090
+| Service | URL |
+|---|---|
+| Dashboard | `http://<your-ip>:3000` |
+| API Server | `http://<your-ip>:55000` |
+| API Docs | `http://<your-ip>:55000/docs` |
 
-### Deployment URL Checklist (remote host)
-- Set in `.env` before building/running:
-  - `SERVER_IP=<HOST_OR_DOMAIN>`
-  - `CORS_ORIGINS=["http://<HOST>:3000"]` (add more as needed)
-  - `VITE_API_URL=http://<HOST>:55000/api/v1`
-  - `VITE_WS_URL=ws://<HOST>:55000/ws`
-- Agents:
-  - Set `CYBERSENTINEL_SERVER_URL=http://<HOST>:55000/api/v1` on agent machines, or pass the manager URL to the installer scripts.
 ### Default Credentials
 
 ```
@@ -196,91 +169,6 @@ Password: changeme123!
 ```
 
 **⚠️ IMPORTANT**: Change the default password immediately after first login!
-
-### Docker Compose Configuration
-
-The `docker-compose.yml` includes all necessary services:
-
-```yaml
-version: '3.8'
-
-services:
-  postgres:
-    image: postgres:15-alpine
-    environment:
-      POSTGRES_DB: cybersentinel_dlp
-      POSTGRES_USER: dlp_user
-      POSTGRES_PASSWORD: ${DB_PASSWORD}
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
-    healthcheck:
-      test: ["CMD", "pg_isready", "-U", "dlp_user"]
-
-  redis:
-    image: redis:7-alpine
-    command: redis-server --requirepass ${REDIS_PASSWORD}
-    healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
-
-  opensearch:
-    image: opensearchproject/opensearch:2.11.0
-    environment:
-      - discovery.type=single-node
-      - OPENSEARCH_JAVA_OPTS=-Xms512m -Xmx512m
-      - DISABLE_SECURITY_PLUGIN=true
-
-  server:
-    build: ./server
-    ports:
-      - "8000:8000"
-    environment:
-      - DATABASE_URL=postgresql+asyncpg://dlp_user:${DB_PASSWORD}@postgres:5432/cybersentinel_dlp
-      - REDIS_URL=redis://:${REDIS_PASSWORD}@redis:6379/0
-      - OPENSEARCH_URL=http://opensearch:9200
-    depends_on:
-      - postgres
-      - redis
-      - opensearch
-    volumes:
-      - ./server:/app
-
-  prometheus:
-    image: prom/prometheus:latest
-    ports:
-      - "9090:9090"
-    volumes:
-      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml
-
-volumes:
-  postgres_data:
-```
-
-### Environment Variables
-
-Edit `.env`:
-
-```bash
-# Database
-DB_PASSWORD=your_secure_password_here
-
-# Redis
-REDIS_PASSWORD=your_redis_password_here
-
-# JWT Authentication
-SECRET_KEY=your_secret_key_minimum_32_characters
-ALGORITHM=HS256
-ACCESS_TOKEN_EXPIRE_MINUTES=60
-
-# OpenSearch
-OPENSEARCH_URL=http://opensearch:9200
-
-# SMTP (for email alerts - optional)
-SMTP_HOST=smtp.gmail.com
-SMTP_PORT=587
-SMTP_USERNAME=your-email@gmail.com
-SMTP_PASSWORD=your-app-password
-SMTP_FROM_EMAIL=alerts@cybersentinel.com
-```
 
 ### Verify Installation
 
@@ -825,9 +713,9 @@ Test Coverage: 87%
 
 ### Getting Help
 
-- **Documentation**: https://github.com/effaaykhan/cybersentinel-dlp
-- **Issues**: https://github.com/effaaykhan/cybersentinel-dlp/issues
-- **Discussions**: https://github.com/effaaykhan/cybersentinel-dlp/discussions
+- **Documentation**: https://github.com/cybersentinel-06/Data-Loss-Prevention
+- **Issues**: https://github.com/cybersentinel-06/Data-Loss-Prevention/issues
+- **Discussions**: https://github.com/cybersentinel-06/Data-Loss-Prevention/discussions
 
 ### Contributing
 
