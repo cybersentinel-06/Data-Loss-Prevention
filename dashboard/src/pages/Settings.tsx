@@ -1,14 +1,42 @@
 import { useState } from 'react'
-import { Settings as SettingsIcon, Server, Database, Bell, Globe } from 'lucide-react'
+import { Settings as SettingsIcon, Server, Database, Bell, Globe, Lock } from 'lucide-react'
 import toast from 'react-hot-toast'
-import { initiateGoogleDriveConnection, initiateOneDriveConnection } from '@/lib/api'
+import { initiateGoogleDriveConnection, initiateOneDriveConnection, changePassword } from '@/lib/api'
+import { useAuthStore } from '@/lib/store/auth'
 import { API_URL } from '@/lib/config'
 
 const defaultOpenSearchUrl = import.meta.env.VITE_OPENSEARCH_URL ?? 'https://localhost:9200'
 
 export default function Settings() {
+  const { user } = useAuthStore()
   const [isConnectingDrive, setIsConnectingDrive] = useState(false)
   const [isConnectingOneDrive, setIsConnectingOneDrive] = useState(false)
+  const [currentPassword, setCurrentPassword] = useState('')
+  const [newPassword, setNewPassword] = useState('')
+  const [confirmPassword, setConfirmPassword] = useState('')
+  const [changingPassword, setChangingPassword] = useState(false)
+
+  const handleChangePassword = async (e: React.FormEvent) => {
+    e.preventDefault()
+
+    if (newPassword !== confirmPassword) {
+      toast.error('New passwords do not match')
+      return
+    }
+
+    setChangingPassword(true)
+    try {
+      await changePassword(user?.email || '', currentPassword, newPassword, confirmPassword)
+      toast.success('Password changed successfully')
+      setCurrentPassword('')
+      setNewPassword('')
+      setConfirmPassword('')
+    } catch (err: any) {
+      toast.error(err.response?.data?.detail || err.message || 'Failed to change password')
+    } finally {
+      setChangingPassword(false)
+    }
+  }
 
   const handleDriveConnect = async () => {
     try {
@@ -48,6 +76,83 @@ export default function Settings() {
 
       {/* Settings Sections */}
       <div className="space-y-6">
+        {/* Account Security */}
+        <div className="card">
+          <div className="flex items-center gap-3 mb-4">
+            <div className="p-2 bg-purple-100 rounded-lg">
+              <Lock className="h-5 w-5 text-purple-600" />
+            </div>
+            <h3 className="font-semibold text-gray-900">Account Security</h3>
+          </div>
+
+          <form onSubmit={handleChangePassword} className="space-y-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Username
+              </label>
+              <input
+                type="text"
+                className="input bg-gray-50"
+                value={user?.email || ''}
+                readOnly
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Current Password
+              </label>
+              <input
+                type="password"
+                className="input"
+                value={currentPassword}
+                onChange={(e) => setCurrentPassword(e.target.value)}
+                placeholder="Enter current password"
+                required
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                New Password
+              </label>
+              <input
+                type="password"
+                className="input"
+                value={newPassword}
+                onChange={(e) => setNewPassword(e.target.value)}
+                placeholder="Enter new password"
+                required
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Confirm New Password
+              </label>
+              <input
+                type="password"
+                className="input"
+                value={confirmPassword}
+                onChange={(e) => setConfirmPassword(e.target.value)}
+                placeholder="Confirm new password"
+                required
+              />
+              <p className="mt-1 text-xs text-gray-500">
+                Must be at least 12 characters with uppercase, lowercase, digit, and special character.
+              </p>
+            </div>
+
+            <button
+              type="submit"
+              disabled={changingPassword}
+              className="btn-primary disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {changingPassword ? 'Updating...' : 'Update Password'}
+            </button>
+          </form>
+        </div>
+
         {/* System Settings */}
         <div className="card">
           <div className="flex items-center gap-3 mb-4">

@@ -49,6 +49,13 @@ class RefreshTokenRequest(BaseModel):
     refresh_token: str
 
 
+class ChangePasswordRequest(BaseModel):
+    username: str
+    current_password: str
+    new_password: str
+    new_password_confirm: str
+
+
 @router.post("/register", response_model=Dict, status_code=status.HTTP_201_CREATED)
 async def register(
     user_data: UserRegister,
@@ -206,6 +213,56 @@ async def refresh_token(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid refresh token",
         )
+
+
+@router.post("/change-password")
+async def change_password(
+    request: ChangePasswordRequest,
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Change user password. No JWT required — authenticates via username + current password.
+    """
+    if request.new_password != request.new_password_confirm:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="New passwords do not match",
+        )
+
+    if not validate_password_strength(request.new_password):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Password must be at least {settings.PASSWORD_MIN_LENGTH} characters "
+                   "and contain uppercase, lowercase, digit, and special character",
+        )
+
+    user_service = UserService(db)
+
+    # Verify identity via current credentials
+    user = await user_service.authenticate_user(
+        email=request.username,
+        password=request.current_password,
+    )
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Current username or password is incorrect",
+        )
+
+    # Update password
+    success = await user_service.update_password(
+        user_id=str(user.id),
+        current_password=request.current_password,
+        new_password=request.new_password,
+    )
+    if not success:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to update password",
+        )
+
+    logger.info("Password changed", email=user.email)
+    return {"message": "Password changed successfully"}
 
 
 @router.post("/logout")

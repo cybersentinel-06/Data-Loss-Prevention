@@ -429,4 +429,19 @@ export const acknowledgeAlert = async (alertId: string) => {
   return data
 }
 
+export const changePassword = async (
+  username: string,
+  currentPassword: string,
+  newPassword: string,
+  newPasswordConfirm: string
+) => {
+  const { data } = await apiClient.post('/auth/change-password', {
+    username,
+    current_password: currentPassword,
+    new_password: newPassword,
+    new_password_confirm: newPasswordConfirm,
+  })
+  return data
+}
+
 export default apiClient

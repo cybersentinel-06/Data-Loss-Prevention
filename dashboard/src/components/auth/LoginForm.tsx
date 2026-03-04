@@ -1,17 +1,35 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuthStore } from '@/lib/store/auth'
-import { Shield, Mail, Lock, AlertCircle } from 'lucide-react'
+import { changePassword } from '@/lib/api'
+import { Shield, Mail, Lock, AlertCircle, CheckCircle, KeyRound } from 'lucide-react'
 
 export default function LoginForm() {
   const navigate = useNavigate()
   const { login } = useAuthStore()
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
+  const [newPassword, setNewPassword] = useState('')
+  const [confirmPassword, setConfirmPassword] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
+  const [success, setSuccess] = useState('')
+  const [mode, setMode] = useState<'login' | 'changePassword'>('login')
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  const resetForm = () => {
+    setPassword('')
+    setNewPassword('')
+    setConfirmPassword('')
+    setError('')
+    setSuccess('')
+  }
+
+  const switchMode = (newMode: 'login' | 'changePassword') => {
+    resetForm()
+    setMode(newMode)
+  }
+
+  const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault()
     setError('')
     setLoading(true)
@@ -27,31 +45,76 @@ export default function LoginForm() {
     }
   }
 
+  const handleChangePassword = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setError('')
+    setSuccess('')
+
+    if (newPassword !== confirmPassword) {
+      setError('New passwords do not match')
+      return
+    }
+
+    setLoading(true)
+    try {
+      await changePassword(email, password, newPassword, confirmPassword)
+      setSuccess('Password changed successfully! You can now sign in with your new password.')
+      resetForm()
+      setTimeout(() => setMode('login'), 2000)
+    } catch (err: any) {
+      const errorMessage = err.response?.data?.detail || err.message || 'Failed to change password'
+      setError(errorMessage)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const isChangePassword = mode === 'changePassword'
+
   return (
     <div className="w-full max-w-md">
       <div className="bg-gray-800/50 backdrop-blur-xl rounded-3xl shadow-2xl p-8 border border-gray-700/50">
         {/* Header */}
         <div className="text-center mb-8">
           <div className="inline-flex items-center justify-center w-20 h-20 bg-gradient-to-br from-indigo-500 via-purple-500 to-pink-500 rounded-2xl mb-4 shadow-lg transform hover:scale-105 transition-transform">
-            <Shield className="w-10 h-10 text-white" />
+            {isChangePassword ? (
+              <KeyRound className="w-10 h-10 text-white" />
+            ) : (
+              <Shield className="w-10 h-10 text-white" />
+            )}
           </div>
           <h1 className="text-4xl font-bold bg-gradient-to-r from-indigo-400 via-purple-400 to-pink-400 bg-clip-text text-transparent">CyberSentinel DLP</h1>
-          <p className="text-gray-200 mt-3 font-medium">Enterprise Data Loss Prevention</p>
+          <p className="text-gray-200 mt-3 font-medium">
+            {isChangePassword ? 'Change Your Password' : 'Enterprise Data Loss Prevention'}
+          </p>
         </div>
+
+        {/* Success Alert */}
+        {success && (
+          <div className="mb-6 p-4 bg-green-900/30 border border-green-500/50 rounded-lg flex items-start gap-3">
+            <CheckCircle className="w-5 h-5 text-green-400 flex-shrink-0 mt-0.5" />
+            <div className="flex-1">
+              <h3 className="text-sm font-medium text-green-300">Success</h3>
+              <p className="text-sm text-green-200 mt-1">{success}</p>
+            </div>
+          </div>
+        )}
 
         {/* Error Alert */}
         {error && (
           <div className="mb-6 p-4 bg-red-900/30 border border-red-500/50 rounded-lg flex items-start gap-3">
             <AlertCircle className="w-5 h-5 text-red-400 flex-shrink-0 mt-0.5" />
             <div className="flex-1">
-              <h3 className="text-sm font-medium text-red-300">Authentication Failed</h3>
+              <h3 className="text-sm font-medium text-red-300">
+                {isChangePassword ? 'Password Change Failed' : 'Authentication Failed'}
+              </h3>
               <p className="text-sm text-red-200 mt-1">{error}</p>
             </div>
           </div>
         )}
 
-        {/* Login Form */}
-        <form onSubmit={handleSubmit} className="space-y-6">
+        {/* Form */}
+        <form onSubmit={isChangePassword ? handleChangePassword : handleLogin} className="space-y-6">
           {/* Username Field */}
           <div>
             <label htmlFor="email" className="block text-sm font-medium text-gray-200 mb-2">
@@ -74,10 +137,10 @@ export default function LoginForm() {
             </div>
           </div>
 
-          {/* Password Field */}
+          {/* Current Password Field */}
           <div>
             <label htmlFor="password" className="block text-sm font-medium text-gray-200 mb-2">
-              Password
+              {isChangePassword ? 'Current Password' : 'Password'}
             </label>
             <div className="relative">
               <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
@@ -90,11 +153,62 @@ export default function LoginForm() {
                 onChange={(e) => setPassword(e.target.value)}
                 required
                 className="block w-full pl-10 pr-3 py-3 border-2 border-gray-600 rounded-xl focus:ring-4 focus:ring-purple-500/50 focus:border-purple-500 transition-all bg-gray-900/50 text-white placeholder-gray-400"
-                placeholder="Enter your password"
+                placeholder={isChangePassword ? 'Enter current password' : 'Enter your password'}
                 disabled={loading}
               />
             </div>
           </div>
+
+          {/* New Password Fields (only in change password mode) */}
+          {isChangePassword && (
+            <>
+              <div>
+                <label htmlFor="newPassword" className="block text-sm font-medium text-gray-200 mb-2">
+                  New Password
+                </label>
+                <div className="relative">
+                  <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                    <KeyRound className="h-5 w-5 text-gray-400" />
+                  </div>
+                  <input
+                    id="newPassword"
+                    type="password"
+                    value={newPassword}
+                    onChange={(e) => setNewPassword(e.target.value)}
+                    required
+                    className="block w-full pl-10 pr-3 py-3 border-2 border-gray-600 rounded-xl focus:ring-4 focus:ring-purple-500/50 focus:border-purple-500 transition-all bg-gray-900/50 text-white placeholder-gray-400"
+                    placeholder="Enter new password"
+                    disabled={loading}
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label htmlFor="confirmPassword" className="block text-sm font-medium text-gray-200 mb-2">
+                  Confirm New Password
+                </label>
+                <div className="relative">
+                  <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                    <KeyRound className="h-5 w-5 text-gray-400" />
+                  </div>
+                  <input
+                    id="confirmPassword"
+                    type="password"
+                    value={confirmPassword}
+                    onChange={(e) => setConfirmPassword(e.target.value)}
+                    required
+                    className="block w-full pl-10 pr-3 py-3 border-2 border-gray-600 rounded-xl focus:ring-4 focus:ring-purple-500/50 focus:border-purple-500 transition-all bg-gray-900/50 text-white placeholder-gray-400"
+                    placeholder="Confirm new password"
+                    disabled={loading}
+                  />
+                </div>
+              </div>
+
+              <p className="text-xs text-gray-400">
+                Password must be at least 12 characters with uppercase, lowercase, digit, and special character.
+              </p>
+            </>
+          )}
 
           {/* Submit Button */}
           <button
@@ -108,16 +222,35 @@ export default function LoginForm() {
                   <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
                   <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
                 </svg>
-                Signing in...
+                {isChangePassword ? 'Changing Password...' : 'Signing in...'}
               </span>
             ) : (
-              'Sign In'
+              isChangePassword ? 'Change Password' : 'Sign In'
             )}
           </button>
         </form>
 
+        {/* Toggle Link */}
+        <div className="mt-6 text-center">
+          {isChangePassword ? (
+            <button
+              onClick={() => switchMode('login')}
+              className="text-sm text-purple-400 hover:text-purple-300 transition-colors"
+            >
+              Back to Sign In
+            </button>
+          ) : (
+            <button
+              onClick={() => switchMode('changePassword')}
+              className="text-sm text-purple-400 hover:text-purple-300 transition-colors"
+            >
+              Change Password
+            </button>
+          )}
+        </div>
+
         {/* Footer */}
-        <div className="mt-6 text-center text-sm text-gray-300">
+        <div className="mt-4 text-center text-sm text-gray-300">
           <p>Secure access to your organization's DLP platform</p>
         </div>
       </div>
