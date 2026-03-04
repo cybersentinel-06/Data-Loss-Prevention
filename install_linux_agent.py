@@ -112,14 +112,50 @@ def check_prerequisites():
         err(f"Python >= 3.8 required (found {platform.python_version()})")
         all_ok = False
 
-    # Check python3-venv is available
+    # Check python3-venv / ensurepip is available — auto-install if missing
+    venv_ok = False
     try:
-        import venv  # noqa: F401
-        ok("Python venv module available")
+        import ensurepip  # noqa: F401
+        venv_ok = True
     except ImportError:
-        err("Python venv module not found")
-        info("Install it with:  sudo apt-get install python3-venv")
-        all_ok = False
+        pass
+
+    if not venv_ok:
+        warn("Python venv/ensurepip module not found — installing python3-venv...")
+        pkg = f"python3.{sys.version_info.minor}-venv"
+        pkg_fallback = "python3-venv"
+        installed = False
+        if shutil.which("apt-get"):
+            subprocess.run(["apt-get", "update", "-qq"], capture_output=True)
+            for p in [pkg, pkg_fallback]:
+                r = subprocess.run(
+                    ["apt-get", "install", "-y", "-qq", p],
+                    capture_output=True, text=True
+                )
+                if r.returncode == 0:
+                    installed = True
+                    break
+        elif shutil.which("dnf"):
+            r = subprocess.run(
+                ["dnf", "install", "-y", "-q", "python3-libs"],
+                capture_output=True, text=True
+            )
+            installed = r.returncode == 0
+        elif shutil.which("yum"):
+            r = subprocess.run(
+                ["yum", "install", "-y", "-q", "python3-libs"],
+                capture_output=True, text=True
+            )
+            installed = r.returncode == 0
+
+        if installed:
+            ok("python3-venv installed")
+        else:
+            err("Could not install python3-venv automatically")
+            info("Install it manually:  sudo apt-get install python3-venv")
+            all_ok = False
+    else:
+        ok("Python venv module available")
 
     # systemd
     if shutil.which("systemctl"):
@@ -196,9 +232,47 @@ def setup_virtualenv(install_dir, force):
             capture_output=True, text=True
         )
         if result.returncode != 0:
-            err(f"Failed to create venv: {result.stderr}")
-            info("Try: sudo apt-get install python3-venv")
-            sys.exit(1)
+            # Auto-install python3-venv and retry
+            warn("venv creation failed — attempting to install python3-venv...")
+            pkg = f"python3.{sys.version_info.minor}-venv"
+            pkg_fallback = "python3-venv"
+            fixed = False
+            if shutil.which("apt-get"):
+                subprocess.run(["apt-get", "update", "-qq"], capture_output=True)
+                for p in [pkg, pkg_fallback]:
+                    r = subprocess.run(
+                        ["apt-get", "install", "-y", "-qq", p],
+                        capture_output=True, text=True
+                    )
+                    if r.returncode == 0:
+                        fixed = True
+                        break
+            elif shutil.which("dnf"):
+                r = subprocess.run(
+                    ["dnf", "install", "-y", "-q", "python3-libs"],
+                    capture_output=True, text=True
+                )
+                fixed = r.returncode == 0
+            elif shutil.which("yum"):
+                r = subprocess.run(
+                    ["yum", "install", "-y", "-q", "python3-libs"],
+                    capture_output=True, text=True
+                )
+                fixed = r.returncode == 0
+
+            if fixed:
+                # Retry venv creation
+                if os.path.exists(venv_dir):
+                    shutil.rmtree(venv_dir)
+                result = subprocess.run(
+                    [sys.executable, "-m", "venv", venv_dir],
+                    capture_output=True, text=True
+                )
+
+            if result.returncode != 0:
+                err(f"Failed to create venv: {result.stderr}")
+                info("Install manually: sudo apt-get install python3-venv")
+                sys.exit(1)
         ok("Virtual environment created")
     else:
         ok("Virtual environment already exists")
