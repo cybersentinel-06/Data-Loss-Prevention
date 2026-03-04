@@ -4,7 +4,7 @@ Manage DLP agents deployed on endpoints
 """
 
 from typing import List, Dict, Any, Optional
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, status, Request
 from pydantic import BaseModel, Field, ConfigDict
@@ -88,12 +88,17 @@ async def list_agents(
     db = get_mongodb()
     agents_collection = db["agents"]
 
-    # Calculate cutoff time for active agents
-    cutoff_time = datetime.utcnow() - timedelta(minutes=AGENT_TIMEOUT_MINUTES)
+    # Calculate cutoff time for active agents (timezone-aware UTC)
+    cutoff_time = datetime.now(timezone.utc) - timedelta(minutes=AGENT_TIMEOUT_MINUTES)
+    # Also create a naive version for comparing with legacy naive datetimes in MongoDB
+    cutoff_naive = datetime.utcnow() - timedelta(minutes=AGENT_TIMEOUT_MINUTES)
 
-    # Build query filter - only show agents with recent heartbeat
-    query = {
-        "last_seen": {"$gte": cutoff_time}
+    # Build query filter - show agents with recent heartbeat (handle both aware and naive datetimes)
+    query: Dict[str, Any] = {
+        "$or": [
+            {"last_seen": {"$gte": cutoff_time}},
+            {"last_seen": {"$gte": cutoff_naive}},
+        ]
     }
     if os:
         query["os"] = os
@@ -110,26 +115,18 @@ async def list_agents(
             del agent_doc["status"]
         if "capabilities" not in agent_doc:
             agent_doc["capabilities"] = {}
-        
-        # Convert datetime objects to ISO format strings with Z suffix (UTC)
-        if "last_seen" in agent_doc and isinstance(agent_doc["last_seen"], datetime):
-            agent_doc["last_seen"] = agent_doc["last_seen"].isoformat() + "Z"
-        if "created_at" in agent_doc and isinstance(agent_doc["created_at"], datetime):
-            agent_doc["created_at"] = agent_doc["created_at"].isoformat() + "Z"
-        
+
+        # Normalize datetime to timezone-aware UTC
+        for dt_field in ("last_seen", "created_at"):
+            if dt_field in agent_doc and isinstance(agent_doc[dt_field], datetime):
+                dt_val = agent_doc[dt_field]
+                if dt_val.tzinfo is None:
+                    dt_val = dt_val.replace(tzinfo=timezone.utc)
+                agent_doc[dt_field] = dt_val.isoformat()
+
         agents.append(Agent(**agent_doc))
 
-    # Cleanup dead agents in background (non-blocking)
-    try:
-        cleanup_result = await agents_collection.delete_many({
-            "last_seen": {"$lt": cutoff_time}
-        })
-        if cleanup_result.deleted_count > 0:
-            logger.info("Cleaned up dead agents", count=cleanup_result.deleted_count)
-    except Exception as e:
-        logger.warning("Failed to cleanup dead agents", error=str(e))
-
-    logger.info("Listed agents", count=len(agents), filters=query)
+    logger.info("Listed agents", count=len(agents))
     return agents
 
 
@@ -155,7 +152,7 @@ async def register_agent(
         agent_id = f"{agent.os.upper()}-{agent.name.replace(' ', '-')}"
 
     # Create agent document with custom agent_id
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc)
     capabilities = body.get("capabilities") or {}
 
     agent_doc = {
@@ -240,7 +237,6 @@ async def agent_heartbeat(
     agents_collection = db["agents"]
 
     # Determine timestamp to use
-    from datetime import timezone
     server_time = datetime.now(timezone.utc)
     heartbeat_time = server_time
     
@@ -358,12 +354,16 @@ async def get_agents_summary(
     db = get_mongodb()
     agents_collection = db["agents"]
 
-    # Calculate cutoff time for active agents
-    cutoff_time = datetime.utcnow() - timedelta(minutes=AGENT_TIMEOUT_MINUTES)
+    # Calculate cutoff time for active agents (handle both aware and naive datetimes)
+    cutoff_time = datetime.now(timezone.utc) - timedelta(minutes=AGENT_TIMEOUT_MINUTES)
+    cutoff_naive = datetime.utcnow() - timedelta(minutes=AGENT_TIMEOUT_MINUTES)
 
     # Count active agents (have sent heartbeat within timeout)
     active = await agents_collection.count_documents({
-        "last_seen": {"$gte": cutoff_time}
+        "$or": [
+            {"last_seen": {"$gte": cutoff_time}},
+            {"last_seen": {"$gte": cutoff_naive}},
+        ]
     })
 
     # Count total agents (including dead ones)

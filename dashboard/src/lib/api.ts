@@ -93,7 +93,7 @@ export const getEventsBySeverity = async () => {
 
 // Export individual functions for direct imports
 export const getAgents = async (params?: any) => {
-  const { data } = await apiClient.get('/agents', { params })
+  const { data } = await apiClient.get('/agents/', { params })
   return data
 }
 
@@ -104,7 +104,7 @@ export const deleteAgent = async (agentId: string) => {
 
 // Additional exports for direct imports
 export const getAlerts = async () => {
-  const { data } = await apiClient.get('/alerts')
+  const { data } = await apiClient.get('/alerts/')
   return data
 }
 
