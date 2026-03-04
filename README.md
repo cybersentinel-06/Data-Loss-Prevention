@@ -15,6 +15,8 @@ A production-ready Data Loss Prevention platform with real-time endpoint monitor
 ## Table of Contents
 
 - [Quick Start — One-Command Install](#quick-start--one-command-install)
+  - [Server Installation](#server-installation)
+  - [Linux Agent Installation](#linux-agent-installation)
 - [Architecture](#architecture)
 - [Features](#features)
 - [Step-by-Step Installation Guide](#step-by-step-installation-guide)
@@ -37,6 +39,8 @@ A production-ready Data Loss Prevention platform with real-time endpoint monitor
 ---
 
 ## Quick Start — One-Command Install
+
+### Server Installation
 
 Run this on any machine with **Python 3.8+** and **Docker**:
 
@@ -62,6 +66,27 @@ No source code checkout. No build step. Just pull and run.
 | API Docs (Swagger) | `http://<server-ip>:55000/docs` |
 
 **Default credentials:** username `admin` / password `admin` (created automatically on first boot)
+
+### Linux Agent Installation
+
+Run this on any Linux endpoint with **Python 3.8+** and **systemd**:
+
+```bash
+curl -sLO https://raw.githubusercontent.com/cybersentinel-06/Data-Loss-Prevention/main/install_linux_agent.py && sudo python3 install_linux_agent.py --server-url http://<SERVER-IP>:55000/api/v1
+```
+
+Replace `<SERVER-IP>` with the IP address of your DLP server.
+
+This will:
+1. Download the agent from GitHub (no git clone needed)
+2. Create a Python virtual environment and install dependencies
+3. Generate `/etc/cybersentinel/agent_config.json` with your server URL and a unique agent ID
+4. Install and start the `cybersentinel-agent` systemd service
+
+The agent registers with the server immediately and appears in **Dashboard > Agents** within 30 seconds.
+
+> Add `--no-start` to install without starting the agent.
+> Add `--force` to overwrite existing config and reinstall.
 
 ---
 
