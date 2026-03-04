@@ -17,6 +17,7 @@ A production-ready Data Loss Prevention platform with real-time endpoint monitor
 - [Quick Start — One-Command Install](#quick-start--one-command-install)
   - [Server Installation](#server-installation)
   - [Linux Agent Installation](#linux-agent-installation)
+  - [Windows Agent Installation](#windows-agent-installation)
 - [Architecture](#architecture)
 - [Features](#features)
 - [Step-by-Step Installation Guide](#step-by-step-installation-guide)
@@ -87,6 +88,29 @@ The agent registers with the server immediately and appears in **Dashboard > Age
 
 > Add `--no-start` to install without starting the agent.
 > Add `--force` to overwrite existing config and reinstall.
+
+### Windows Agent Installation
+
+Run this in an **elevated PowerShell** (Run as Administrator) on any Windows 10/11 or Server 2016+ endpoint:
+
+```powershell
+irm https://raw.githubusercontent.com/cybersentinel-06/Data-Loss-Prevention/main/install_windows_agent.ps1 -OutFile $env:TEMP\install.ps1; & $env:TEMP\install.ps1 -ServerUrl "http://<SERVER-IP>:55000/api/v1"
+```
+
+Replace `<SERVER-IP>` with the IP address of your DLP server.
+
+This will:
+1. Download the compiled agent executable and CA certificate from GitHub
+2. Install to `C:\Program Files\CyberSentinel\`
+3. Install the CA certificate to the Trusted Root store
+4. Generate `agent_config.json` with your server URL and a unique agent ID
+5. Create a scheduled task that runs the agent at startup as SYSTEM
+6. Start the agent — it registers with the server immediately
+
+The agent appears in **Dashboard > Agents** within 30 seconds.
+
+> Add `-NoStart` to install without starting the agent.
+> Add `-Force` to overwrite existing installation.
 
 ---
 
@@ -344,70 +368,81 @@ Key settings to review:
 
 ### 4. Windows Agent Installation
 
-#### Option A: PowerShell Installer (Recommended)
+The Windows agent is a compiled C++ executable — no Python or dependencies required.
+
+#### Option A: One-Command Install (Recommended)
 
 Run in an **elevated PowerShell** (Run as Administrator):
 
 ```powershell
-# Download and run the installer
-# -ManagerUrl: point to your DLP server
-cd C:\Temp
-git clone https://github.com/cybersentinel-06/Data-Loss-Prevention.git
-cd Data-Loss-Prevention\scripts
-.\install_windows_agent.ps1 -ManagerUrl "http://<SERVER-IP>:55000/api/v1"
+irm https://raw.githubusercontent.com/cybersentinel-06/Data-Loss-Prevention/main/install_windows_agent.ps1 -OutFile $env:TEMP\install.ps1; & $env:TEMP\install.ps1 -ServerUrl "http://<SERVER-IP>:55000/api/v1"
 ```
 
-The installer will:
-- Create a Python virtual environment
-- Install dependencies from `agents/endpoint/windows/requirements.txt`
-- Copy `agent_config.json` to `C:\ProgramData\CyberSentinel\`
-- Register a Windows Scheduled Task (`CyberSentinelAgent`) that starts at boot
+Replace `<SERVER-IP>` with the IP address of your DLP server.
+
+The installer will automatically:
+1. Check prerequisites (Administrator privileges, network connectivity)
+2. Download the agent executable and CA certificate from GitHub
+3. Install to `C:\Program Files\CyberSentinel\`
+4. Install the CA certificate to the Trusted Root store
+5. Generate `agent_config.json` with your server URL, hostname, and a unique agent ID
+6. Create a scheduled task (`CyberSentinelDLPAgent`) that runs at startup as SYSTEM
+7. Start the agent — it registers with the server immediately
+
+**Additional options:**
+
+```powershell
+# Install without starting (configure first)
+.\install_windows_agent.ps1 -ServerUrl "http://<SERVER-IP>:55000/api/v1" -NoStart
+
+# Custom install directory
+.\install_windows_agent.ps1 -ServerUrl "http://<SERVER-IP>:55000/api/v1" -InstallDir "D:\CyberSentinel"
+
+# Force reinstall (overwrite existing installation)
+.\install_windows_agent.ps1 -ServerUrl "http://<SERVER-IP>:55000/api/v1" -Force
+```
 
 #### Option B: Manual Installation
 
 ```powershell
-# 1. Clone the repository
-git clone https://github.com/cybersentinel-06/Data-Loss-Prevention.git
-cd Data-Loss-Prevention\agents\endpoint\windows
+# 1. Download the agent executable
+mkdir -Force "C:\Program Files\CyberSentinel"
+Invoke-WebRequest -Uri "https://raw.githubusercontent.com/cybersentinel-06/Data-Loss-Prevention/main/agents/endpoint/windows/cybersentinel_agent.exe" -OutFile "C:\Program Files\CyberSentinel\cybersentinel_agent.exe"
 
-# 2. Create virtual environment and install dependencies
-python -m venv .venv
-.venv\Scripts\Activate
-pip install -r requirements.txt
+# 2. Create agent_config.json
+@{
+    server_url = "http://<SERVER-IP>:55000/api/v1"
+    agent_id = [guid]::NewGuid().ToString()
+    agent_name = $env:COMPUTERNAME
+    heartbeat_interval = 30
+    policy_sync_interval = 60
+} | ConvertTo-Json | Set-Content "C:\Program Files\CyberSentinel\agent_config.json"
 
-# 3. Copy and edit the config file
-mkdir -Force C:\ProgramData\CyberSentinel
-Copy-Item agent_config.json C:\ProgramData\CyberSentinel\agent_config.json
-notepad C:\ProgramData\CyberSentinel\agent_config.json
-# Set: "server_url": "http://<SERVER-IP>:55000/api/v1"
-
-# 4. Run the agent
-python agent.py
-```
-
-#### Install as Windows Service (NSSM)
-
-```powershell
-# Install NSSM
-choco install nssm -y
-
-# Register the service
-nssm install CyberSentinelAgent "C:\...\Data-Loss-Prevention\agents\endpoint\windows\.venv\Scripts\python.exe" "C:\...\Data-Loss-Prevention\agents\endpoint\windows\agent.py"
-nssm set CyberSentinelAgent AppDirectory "C:\...\Data-Loss-Prevention\agents\endpoint\windows"
-nssm set CyberSentinelAgent Start SERVICE_AUTO_START
-nssm start CyberSentinelAgent
+# 3. Run the agent
+& "C:\Program Files\CyberSentinel\cybersentinel_agent.exe"
 ```
 
 #### Verify Windows Agent
 
 ```powershell
-# Check logs
-Get-Content "C:\ProgramData\CyberSentinel\cybersentinel_agent.log" -Tail 20
+# Check if agent process is running
+Get-Process cybersentinel_agent
+
+# Check scheduled task status
+Get-ScheduledTask -TaskName CyberSentinelDLPAgent
 
 # Test connectivity to server
 Test-NetConnection -ComputerName <SERVER-IP> -Port 55000
 
 # The agent should appear in Dashboard > Agents within 30 seconds
+```
+
+#### Uninstall Windows Agent
+
+```powershell
+Stop-ScheduledTask -TaskName CyberSentinelDLPAgent
+Unregister-ScheduledTask -TaskName CyberSentinelDLPAgent -Confirm:$false
+Remove-Item -Recurse -Force "C:\Program Files\CyberSentinel"
 ```
 
 **Windows Agent Capabilities:**

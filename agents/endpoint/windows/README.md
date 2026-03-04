@@ -1,164 +1,219 @@
-# CyberSentinel DLP - Windows Agent
+# CyberSentinel DLP Agent
 
-Enterprise endpoint DLP agent for Windows operating systems.
+A lightweight Data Loss Prevention (DLP) agent for Windows that monitors and protects sensitive data on endpoints. Built with C++ for high performance and minimal resource usage.
 
-## Features
+## 🚀 Features
 
-- ✅ **File System Monitoring** - Real-time monitoring of file operations
-- ✅ **Clipboard Monitoring** - Detects sensitive data in clipboard
-- ✅ **USB Device Detection** - Alerts on USB device connections
-- ✅ **Automatic Classification** - Pattern-based sensitive data detection
-- ✅ **Real-time Reporting** - Sends events to central server
-- ✅ **Configurable Monitoring** - Customize paths and file types
+- **Real-time Monitoring**: Continuous monitoring of system activities and data access
+- **Policy-based Protection**: Configurable policies for data classification and protection
+- **Windows Service**: Runs as a background Windows service for persistent protection
+- **Heartbeat & Sync**: Regular communication with central server for policy updates
+- **Lightweight**: Minimal CPU and memory footprint
+- **Easy Management**: Simple PowerShell scripts for installation, updates, and removal
 
-## Requirements
+## 📋 Prerequisites
 
+### For Running the Agent
 - Windows 10/11 or Windows Server 2016+
-- Python 3.8+ (for development)
-- Administrator privileges (for installation)
+- Administrator privileges
+- Network connectivity to DLP server
 
-## Quick Start
+### For Building from Source
+- MSYS2 with MinGW-w64 (64-bit)
+- G++ compiler with C++23 support
+- Required libraries (included in MSYS2):
+  - winhttp
+  - wbemuuid
+  - ole32
+  - oleaut32
+  - user32
+  - ws2_32
+  - setupapi
+  - advapi32
 
-### Option 1: Run from Source
+## 🔧 Installation
+
+### Method 1: Using PowerShell Script (Recommended)
+
+1. **Download the installation script**:
+   ```powershell
+   # Or clone this repository
+   git clone https://github.com/ansh-gadhia/DLP_Agent_VGIPL_CPP.git
+   cd DLP_Agent_VGIPL_CPP
+   ```
+
+2. **Run the installation script as Administrator**:
+   ```powershell
+   # Right-click PowerShell and select "Run as Administrator"
+   .\agent_install.ps1
+   ```
+
+3. **Follow the prompts** to configure:
+   - Server URL (e.g., `http://192.168.1.100:55000/api/v1`)
+   - Agent Name (defaults to computer name)
+   - Agent ID (auto-generated UUID)
+   - Heartbeat Interval (default: 30 seconds)
+   - Policy Sync Interval (default: 60 seconds)
+
+The script will:
+- Download NSSM (Non-Sucking Service Manager)
+- Download the latest agent executable from releases
+- Create configuration file (`agent_config.json`)
+- Install and start the Windows service
+
+### Method 2: Manual Installation
+
+1. **Download the executable** from [Releases](https://github.com/ansh-gadhia/DLP_Agent_VGIPL_CPP/releases)
+
+2. **Create `agent_config.json`** in the same directory:
+   ```json
+   {
+     "server_url": "http://your-server:55000/api/v1",
+     "agent_id": "unique-agent-id",
+     "agent_name": "HOSTNAME",
+     "heartbeat_interval": 30,
+     "policy_sync_interval": 60
+   }
+   ```
+
+3. **Run the agent**:
+   ```powershell
+   .\cybersentinel_agent.exe
+   ```
+
+## 🏗️ Building from Source
+
+### 1. Install MSYS2
+
+Download and install MSYS2 from [msys2.org](https://www.msys2.org/)
+
+### 2. Install Required Packages
 
 ```bash
-# Install dependencies
-pip install -r requirements.txt
-
-# Configure agent
-# Edit agent_config.json with your server URL
-
-# Run agent
-python agent.py
+# Open MSYS2 MinGW 64-bit terminal
+pacman -S mingw-w64-x86_64-gcc
 ```
 
-### Option 2: Build Executable
+### 3. Compile the Agent
 
 ```bash
-# Build standalone executable
-build_agent.bat
-
-# Run executable
-dist\CyberSentinelAgent.exe
+g++ -std=c++23 -O2 agent.cpp -o cybersentinel_agent.exe \
+    -lwinhttp -lwbemuuid -lole32 -loleaut32 -luser32 \
+    -lws2_32 -lsetupapi -ladvapi32 -static
 ```
 
-## Configuration
+### Compiler Flags Explained:
+- `-std=c++23`: Use C++23 standard
+- `-O2`: Optimization level 2
+- `-static`: Static linking for standalone executable
+- `-l*`: Link required Windows libraries
 
-Edit `agent_config.json`:
+## 🔄 Updating the Agent
+
+Use the update script to update the agent executable or configuration:
+
+```powershell
+# Run as Administrator
+.\Upgrade-CyberSentinelAgent.ps1
+```
+
+**Update Options:**
+1. Update Agent Executable (downloads from releases)
+2. Update Configuration (modify agent_config.json)
+3. Update Both
+4. View Current Configuration
+5. Exit
+
+## 🗑️ Uninstallation
+
+Run the uninstall script as Administrator:
+
+```powershell
+.\Uninstall-CyberSentinelAgent.ps1
+```
+
+**Uninstall Options:**
+1. Delete all files and directory (recommended)
+2. Keep configuration file and logs
+3. Keep everything (only remove service)
+
+## 📁 File Structure
+
+```
+C:\Program Files\CyberSentinel\
+├── cybersentinel_agent.exe    # Main agent executable
+├── agent_config.json          # Configuration file
+├── nssm.exe                   # Service manager
+├── service.log                # Agent logs
+└── service_error.log          # Error logs
+```
+
+## ⚙️ Configuration
+
+Edit `agent_config.json` to configure the agent:
 
 ```json
 {
-  "server_url": "http://YOUR-SERVER-IP:8000/api/v1",
-  "agent_name": "YOUR-AGENT-NAME",
-  "monitoring": {
-    "file_system": true,
-    "clipboard": true,
-    "usb_devices": true,
-    "monitored_paths": [
-      "C:\\Users\\Public\\Documents",
-      "C:\\Users\\%USERNAME%\\Desktop"
-    ]
-  }
+  "server_url": "http://server:55000/api/v1",
+  "agent_id": "unique-identifier",
+  "agent_name": "AGENT-NAME",
+  "heartbeat_interval": 30,
+  "policy_sync_interval": 60
 }
 ```
 
-## Installation as Windows Service
+| Parameter | Description | Default |
+|-----------|-------------|---------|
+| `server_url` | DLP server API endpoint | Required |
+| `agent_id` | Unique agent identifier (UUID) | Auto-generated |
+| `agent_name` | Display name for the agent | Computer name |
+| `heartbeat_interval` | Seconds between heartbeat signals | 30 |
+| `policy_sync_interval` | Seconds between policy synchronization | 60 |
 
-### Using NSSM (Recommended)
 
-```powershell
-# Download NSSM
-# https://nssm.cc/download
+## 🔒 Security Considerations
 
-# Install service
-nssm install CyberSentinelDLP "C:\Path\To\CyberSentinelAgent.exe"
+- The agent requires **Administrator privileges** to monitor system activities
+- All communication with the server should use **HTTPS** in production
+- Protect the `agent_config.json` file (contains agent credentials)
+- Review logs regularly for suspicious activity
+- Keep the agent updated to the latest version
 
-# Start service
-nssm start CyberSentinelDLP
+## 🐛 Troubleshooting
 
-# Check status
-nssm status CyberSentinelDLP
-```
+### Service Won't Start
 
-### Using PowerShell
+1. Check if the executable exists:
+   ```powershell
+   Test-Path "C:\Program Files\CyberSentinel\cybersentinel_agent.exe"
+   ```
 
-```powershell
-# Create service
-New-Service -Name "CyberSentinelDLP" `
-    -BinaryPathName "C:\Path\To\CyberSentinelAgent.exe" `
-    -DisplayName "CyberSentinel DLP Agent" `
-    -Description "Data Loss Prevention endpoint agent" `
-    -StartupType Automatic
+2. Verify configuration file:
+   ```powershell
+   Get-Content "C:\Program Files\CyberSentinel\agent_config.json"
+   ```
 
-# Start service
-Start-Service -Name "CyberSentinelDLP"
 
-# Check status
-Get-Service -Name "CyberSentinelDLP"
-```
+### Cannot Connect to Server
 
-## Monitored Events
+- Verify server URL in `agent_config.json`
+- Check network connectivity: `Test-NetConnection server-address -Port 55000`
+- Ensure firewall allows outbound connections
+- Verify server is running and accessible
 
-| Event Type | Description |
-|------------|-------------|
-| **File Created** | New file created in monitored directories |
-| **File Modified** | File content changed |
-| **File Moved** | File moved or renamed |
-| **Clipboard Copy** | Sensitive data copied to clipboard |
-| **USB Connected** | USB device plugged in |
+### High CPU/Memory Usage
 
-## Sensitive Data Detection
+- Check `heartbeat_interval` and `policy_sync_interval` (increase if too frequent)
+- Review logs for excessive errors or retries
+- Ensure server is responding properly
 
-The agent detects:
-- Credit Card Numbers (PAN)
-- Social Security Numbers (SSN)
-- Email Addresses
-- API Keys and Secrets
-- Custom patterns (configurable)
 
-## Logs
+## 🤝 Contributing
 
-Agent logs are saved to: `cybersentinel_agent.log`
+Contributions are welcome! Please follow these steps:
 
-## Troubleshooting
-
-### Agent won't start
-- Check if server URL is correct
-- Verify network connectivity: `ping YOUR-SERVER-IP`
-- Check logs in `cybersentinel_agent.log`
-
-### No events showing on server
-- Verify agent is running: Check Task Manager
-- Check firewall rules: Port 8000 should be open
-- Verify server API is accessible
-
-### Permission errors
-- Run as Administrator
-- Check monitored path permissions
-
-## Uninstallation
-
-```powershell
-# Stop service
-Stop-Service -Name "CyberSentinelDLP"
-
-# Remove service
-Remove-Service -Name "CyberSentinelDLP"
-
-# Or using NSSM
-nssm stop CyberSentinelDLP
-nssm remove CyberSentinelDLP confirm
-```
-
-## Support
-
-For issues or questions:
-- Check logs: `cybersentinel_agent.log`
-- Review server logs
-- Contact: support@cybersentinel.local
-
-## Version
-
-**Version**: 1.0.0
-**Platform**: Windows 10/11, Windows Server 2016+
-**Last Updated**: January 2025
+1. Fork the repository
+2. Create a feature branch (`git checkout -b feature/AmazingFeature`)
+3. Commit your changes (`git commit -m 'Add some AmazingFeature'`)
+4. Push to the branch (`git push origin feature/AmazingFeature`)
+5. Open a Pull Request
