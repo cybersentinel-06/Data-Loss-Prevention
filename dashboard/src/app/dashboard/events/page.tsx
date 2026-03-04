@@ -898,7 +898,7 @@ export default function EventsPage() {
             // Fallback to direct fetch
             const authData = localStorage.getItem('dlp-auth-v2')
             const token = authData ? JSON.parse(authData).state?.accessToken : null
-            const fetchResponse = await fetch('http://localhost:55000/api/v1/onedrive/poll', {
+            const fetchResponse = await fetch('/api/v1/onedrive/poll', {
               method: 'POST',
               headers: {
                 'Authorization': `Bearer ${token}`,

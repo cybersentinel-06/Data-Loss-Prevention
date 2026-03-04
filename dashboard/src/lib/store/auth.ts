@@ -1,8 +1,7 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 import axios from 'axios'
-
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:55000/api/v1'
+import { API_URL } from '../config'
 
 interface AuthState {
   isAuthenticated: boolean

@@ -1,8 +1,9 @@
 import axios from 'axios'
 import { useAuthStore } from './store/auth'
+import { API_URL } from './config'
 
 const apiClient = axios.create({
-  baseURL: import.meta.env.VITE_API_URL || 'http://localhost:55000/api/v1',
+  baseURL: API_URL,
   headers: {
     'Content-Type': 'application/json',
   },
@@ -45,7 +46,7 @@ apiClient.interceptors.response.use(
       try {
         const refreshToken = useAuthStore.getState().refreshToken
         const response = await axios.post(
-          `${import.meta.env.VITE_API_URL || 'http://localhost:55000/api/v1'}/auth/refresh`,
+          `${API_URL}/auth/refresh`,
           { refresh_token: refreshToken }
         )
 

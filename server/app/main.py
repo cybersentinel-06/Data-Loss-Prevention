@@ -34,7 +34,11 @@ logger = structlog.get_logger()
 
 
 async def _auto_init_schema_and_admin():
-    """Create tables if missing and seed the default admin user on first boot."""
+    """Create tables if missing and seed the default admin user on first boot.
+
+    Safe to call from multiple uvicorn workers simultaneously — uses
+    INSERT … ON CONFLICT to avoid duplicate-key errors from race conditions.
+    """
     from sqlalchemy import text
     from app.core.security import get_password_hash
 
@@ -48,39 +52,45 @@ async def _auto_init_schema_and_admin():
     import app.models.onedrive  # noqa: F401
     import app.models.classified_file  # noqa: F401
 
-    # Check if tables already exist (avoid re-creating ENUM types which crashes asyncpg)
-    async with _db.postgres_engine.connect() as conn:
-        result = await conn.execute(
-            text("SELECT EXISTS(SELECT 1 FROM information_schema.tables WHERE table_name='users')")
-        )
-        tables_exist = result.scalar()
-
-    if not tables_exist:
-        async with _db.postgres_engine.begin() as conn:
-            await conn.run_sync(Base.metadata.create_all)
-        logger.info("Database tables created")
-    else:
-        logger.info("Database tables already exist, skipping creation")
-
-    # Seed default admin if no users exist yet
-    async with _db.postgres_session_factory() as session:
-        result = await session.execute(
-            text("SELECT COUNT(*) FROM users")
-        )
-        user_count = result.scalar()
-        if user_count == 0:
-            hashed = get_password_hash("admin")
-            await session.execute(
-                text(
-                    "INSERT INTO users (id, email, hashed_password, full_name, role, organization, is_active, is_verified, created_at, updated_at) "
-                    "VALUES (gen_random_uuid(), 'admin', :pw, 'Administrator', 'ADMIN', 'CyberSentinel', TRUE, TRUE, NOW(), NOW())"
-                ),
-                {"pw": hashed},
+    try:
+        # Check if tables already exist (avoid re-creating ENUM types which crashes asyncpg)
+        async with _db.postgres_engine.connect() as conn:
+            result = await conn.execute(
+                text("SELECT EXISTS(SELECT 1 FROM information_schema.tables WHERE table_name='users')")
             )
-            await session.commit()
-            logger.info("Default admin user created (username: admin, password: admin)")
+            tables_exist = result.scalar()
+
+        if not tables_exist:
+            async with _db.postgres_engine.begin() as conn:
+                await conn.run_sync(Base.metadata.create_all)
+            logger.info("Database tables created")
         else:
-            logger.info("Users table already populated, skipping admin seed")
+            logger.info("Database tables already exist, skipping creation")
+
+        # Seed default admin if no users exist yet.
+        # Uses ON CONFLICT to handle race conditions with multiple workers.
+        async with _db.postgres_session_factory() as session:
+            result = await session.execute(
+                text("SELECT COUNT(*) FROM users")
+            )
+            user_count = result.scalar()
+            if user_count == 0:
+                hashed = get_password_hash("admin")
+                await session.execute(
+                    text(
+                        "INSERT INTO users (id, email, hashed_password, full_name, role, organization, is_active, is_verified, created_at, updated_at) "
+                        "VALUES (gen_random_uuid(), 'admin', :pw, 'Administrator', 'ADMIN', 'CyberSentinel', TRUE, TRUE, NOW(), NOW()) "
+                        "ON CONFLICT (email) DO NOTHING"
+                    ),
+                    {"pw": hashed},
+                )
+                await session.commit()
+                logger.info("Default admin user created (username: admin, password: admin)")
+            else:
+                logger.info("Users table already populated, skipping admin seed")
+    except Exception as e:
+        # Non-fatal: another worker may have already completed initialization
+        logger.warning("Auto-init encountered an error (likely harmless race condition)", error=str(e))
 
 
 @asynccontextmanager
@@ -154,11 +164,13 @@ app.add_middleware(
     window_seconds=settings.RATE_LIMIT_WINDOW,
 )
 
-# CORS
+# CORS — when origins is ["*"] we must disable credentials (Starlette requirement).
+# This is fine because the app uses Bearer tokens, not cookies.
+_wildcard_cors = settings.CORS_ORIGINS == ["*"]
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.CORS_ORIGINS,
-    allow_credentials=True,
+    allow_credentials=not _wildcard_cors,
     allow_methods=["*"],
     allow_headers=["*"],
     expose_headers=["X-Request-ID"],

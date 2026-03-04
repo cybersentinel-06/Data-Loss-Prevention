@@ -40,9 +40,9 @@ class Settings(BaseSettings):
     # - comma-separated strings
     # we allow either str or List[str] as input and normalize via validators below.
     CORS_ORIGINS: List[str] | str = Field(
-        default=["http://localhost:3000", "http://127.0.0.1:3000"]
+        default=["*"]
     )
-    ALLOWED_HOSTS: List[str] | str = Field(default=["localhost", "127.0.0.1", "192.168.1.63"])
+    ALLOWED_HOSTS: List[str] | str = Field(default=["*"])
 
     # PostgreSQL Configuration
     POSTGRES_HOST: str = Field(default="localhost")

@@ -11,6 +11,7 @@ from pydantic import BaseModel, Field, ConfigDict
 import structlog
 import uuid
 
+from app.core.config import settings
 from app.core.security import get_current_user, optional_auth
 from app.core.database import get_mongodb
 from app.core.cache import redis_client
@@ -70,7 +71,7 @@ class AgentRegisterResponse(BaseModel):
                 "name": "WIN-DESKTOP-01",
                 "status": "pending",
                 "registration_key": "eyJ0eXAiOiJKV1QiLCJhbGc...",
-                "manager_url": "https://localhost:55000",
+                "manager_url": "https://your-server:55000",
                 "created_at": "2025-01-12T10:00:00Z"
             }
         }
@@ -281,7 +282,7 @@ async def register_agent(
             name=request.name,
             status="pending",
             registration_key=registration_key,
-            manager_url="https://localhost:55000",  # TODO: Get from config
+            manager_url=f"https://{settings.HOST}:{settings.PORT}",
             created_at=agent_doc["registered_at"]
         )
 

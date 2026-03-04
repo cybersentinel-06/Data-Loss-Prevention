@@ -15,8 +15,11 @@ RUN npm install
 COPY . .
 
 # Accept build arguments for Vite environment variables
-ARG VITE_API_URL=http://localhost:55000/api/v1
-ARG VITE_WS_URL=ws://localhost:55000/ws
+# VITE_API_URL intentionally defaults to empty so the app uses relative "/api/v1"
+# paths at runtime, which the nginx reverse proxy forwards to the backend.
+# Override only for non-proxied setups: --build-arg VITE_API_URL=http://host:55000/api/v1
+ARG VITE_API_URL=
+ARG VITE_WS_URL=
 ARG VITE_APP_NAME=CyberSentinel DLP
 ARG VITE_APP_VERSION=2.0.0
 

@@ -2,8 +2,8 @@ import { useState } from 'react'
 import { Settings as SettingsIcon, Server, Database, Bell, Globe } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { initiateGoogleDriveConnection, initiateOneDriveConnection } from '@/lib/api'
+import { API_URL } from '@/lib/config'
 
-const defaultApiUrl = import.meta.env.VITE_API_URL ?? ''
 const defaultOpenSearchUrl = import.meta.env.VITE_OPENSEARCH_URL ?? 'https://localhost:9200'
 
 export default function Settings() {
@@ -65,7 +65,7 @@ export default function Settings() {
               <input
                 type="text"
                 className="input"
-                defaultValue={defaultApiUrl || 'https://localhost:55000/api/v1'}
+                defaultValue={API_URL}
                 readOnly
               />
               <p className="mt-1 text-xs text-gray-500">

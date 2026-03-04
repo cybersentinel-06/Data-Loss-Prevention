@@ -14,8 +14,9 @@ RUN npm ci
 # Copy source code
 COPY . .
 
-# Build argument for API URL
-ARG VITE_API_URL
+# VITE_API_URL intentionally defaults to empty so the app uses relative "/api/v1"
+# paths at runtime, which the nginx reverse proxy forwards to the backend.
+ARG VITE_API_URL=
 ENV VITE_API_URL=$VITE_API_URL
 
 # Build application

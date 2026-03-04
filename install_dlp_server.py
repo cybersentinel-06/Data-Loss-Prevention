@@ -251,7 +251,6 @@ def generate_env(install_dir):
         "change-this-strong-mongodb-password": mongo_pass,
         "change-this-strong-redis-password": redis_pass,
         "your-ubuntu-server-ip": host_ip,
-        "SERVER-IP": host_ip,
     }
 
     for old, new in replacements.items():

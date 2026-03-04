@@ -169,7 +169,7 @@ services:
       context: ./dashboard
       dockerfile: Dockerfile.prod
       args:
-        - VITE_API_URL=${MANAGER_URL:-http://localhost:55000}
+        - VITE_API_URL=
     container_name: cybersentinel-dashboard
     ports:
       - "3000:80"
