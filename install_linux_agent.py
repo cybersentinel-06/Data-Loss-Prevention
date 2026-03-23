@@ -36,7 +36,7 @@ REPO_NAME = "Data-Loss-Prevention"
 DEFAULT_BRANCH = "main"
 DEFAULT_INSTALL_DIR = "/opt/cybersentinel/agent"
 DEFAULT_CONFIG_DIR = "/etc/cybersentinel"
-SERVICE_NAME = "cybersentinel-agent"
+SERVICE_NAME = "cybersentineldlp-agent"
 
 RAW_BASE = f"https://raw.githubusercontent.com/{REPO_OWNER}/{REPO_NAME}"
 
