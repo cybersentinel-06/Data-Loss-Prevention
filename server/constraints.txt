@@ -6,7 +6,8 @@ numpy==1.26.2
 
 # Pin ML frameworks to exact versions
 tensorflow==2.15.0
-torch==2.1.2+cpu
+# torch is pinned in requirements.txt with +cpu suffix
+# Cannot use +cpu in constraints as it causes pip conflicts
 transformers==4.36.0
 spacy==3.7.2
 
