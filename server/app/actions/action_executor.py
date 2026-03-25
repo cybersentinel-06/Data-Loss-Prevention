@@ -151,24 +151,66 @@ class ActionExecutor:
         return summary
 
     async def execute_alert(self, event: Dict, action: Dict) -> AlertResult:
-        """Create alert"""
-        alert_id = f"alert-{uuid.uuid4()}"
-        severity = action.get("severity", "medium")
-        title = action.get("title", "DLP Policy Violation")
-        description = action.get("description", "")
+        """Create alert and persist to database"""
+        from app.services.alert_service import AlertService
+        from app.core.database import postgres_session_factory
 
-        alert = {
-            "alert_id": alert_id,
-            "event_id": event.get("event_id"),
-            "severity": severity,
-            "title": title,
-            "description": description,
-            "timestamp": datetime.utcnow().isoformat(),
-            "status": "open",
-            "metadata": action.get("metadata", {})
+        alert_id = f"alert-{uuid.uuid4()}"
+        severity = action.get("parameters", {}).get("severity") or action.get("severity", "medium")
+
+        # Build descriptive title and message
+        title = self._build_alert_title(event, action)
+        message = self._build_alert_message(event, action)
+
+        # Build metadata with classification details
+        classification_meta = event.get("classification_metadata", {})
+        matched_rules = [r.get("label") for r in event.get("classification", [])]
+
+        alert_metadata = {
+            "classification_level": classification_meta.get("classification_level"),
+            "confidence_score": classification_meta.get("confidence_score"),
+            "matched_rules": matched_rules,
+            "file_name": event.get("file_path") or event.get("file", {}).get("path"),
+            "source_path": event.get("source_path"),
+            "destination_path": event.get("destination", {}).get("path"),
+            "blocked": event.get("blocked", False),
+            "action_details": action
         }
 
-        # Store alert (would integrate with alert management system)
+        # Persist alert to database
+        try:
+            async with postgres_session_factory() as session:
+                alert_service = AlertService(session)
+
+                await alert_service.create_alert(
+                    alert_id=alert_id,
+                    alert_type="policy_violation",
+                    severity=severity,
+                    title=title,
+                    message=message,
+                    source_type="policy",
+                    policy_id=action.get("metadata", {}).get("policy_id"),
+                    event_id=event.get("event_id"),
+                    user_email=event.get("user", {}).get("email") or event.get("user_email"),
+                    agent_id=event.get("agent", {}).get("id"),
+                    metadata=alert_metadata
+                )
+
+                logger.logger.info(
+                    "alert_created_in_database",
+                    alert_id=alert_id,
+                    event_id=event.get("event_id"),
+                    severity=severity
+                )
+        except Exception as e:
+            logger.logger.error(
+                "failed_to_persist_alert",
+                alert_id=alert_id,
+                error=str(e)
+            )
+            # Continue even if database save fails
+
+        # Log policy violation for metrics
         logger.log_policy_violation(
             event.get("event_id"),
             action.get("metadata", {}).get("policy_id", "unknown"),
@@ -186,9 +228,72 @@ class ActionExecutor:
             alert_id=alert_id,
             severity=severity,
             title=title,
-            description=description,
-            metadata=alert
+            description=message,
+            metadata=alert_metadata
         )
+
+    def _build_alert_title(self, event: Dict, action: Dict) -> str:
+        """Build descriptive alert title"""
+        event_type = event.get("event", {}).get("type", "event")
+        classification_meta = event.get("classification_metadata", {})
+        classification = classification_meta.get("classification_level", "Unknown")
+        confidence = classification_meta.get("confidence_score", 0.0)
+
+        file_name = event.get("file_path") or event.get("file", {}).get("path") or "Unknown file"
+        if file_name != "Unknown file":
+            file_name = Path(file_name).name
+
+        blocked = event.get("blocked", False)
+        action_verb = "Blocked" if blocked else "Detected"
+
+        if "usb" in event_type.lower():
+            if event.get("event", {}).get("subtype") == "usb_file_transfer":
+                return f"USB Transfer {action_verb} - {file_name} ({classification} - {int(confidence * 100)}%)"
+            else:
+                device = event.get("usb", {}).get("device_name", "USB Device")
+                return f"USB Device {action_verb} - {device}"
+        elif "clipboard" in event_type.lower():
+            return f"Clipboard {action_verb} ({classification} - {int(confidence * 100)}%)"
+        elif "file" in event_type.lower():
+            return f"File Activity {action_verb} - {file_name} ({classification})"
+        else:
+            return f"{event_type.title()} {action_verb} - {file_name}"
+
+    def _build_alert_message(self, event: Dict, action: Dict) -> str:
+        """Build detailed alert message"""
+        parts = []
+
+        # Add classification details
+        classification_meta = event.get("classification_metadata", {})
+        if classification_meta:
+            classification_level = classification_meta.get("classification_level", "Unknown")
+            confidence = classification_meta.get("confidence_score", 0.0)
+            parts.append(f"Classification: {classification_level}")
+            parts.append(f"Confidence: {int(confidence * 100)}%")
+
+            matched_rules = [r.get("label") for r in event.get("classification", [])]
+            if matched_rules:
+                parts.append(f"Sensitive data detected: {', '.join(matched_rules[:5])}")
+
+        # Add file details
+        if event.get("file_path"):
+            parts.append(f"File: {event['file_path']}")
+        if event.get("source_path"):
+            parts.append(f"Source: {event['source_path']}")
+        destination = event.get("destination", {})
+        if isinstance(destination, dict) and destination.get("path"):
+            parts.append(f"Destination: {destination['path']}")
+        elif isinstance(destination, str):
+            parts.append(f"Destination: {destination}")
+
+        # Add action taken
+        if event.get("blocked"):
+            parts.append("Action: Transfer blocked and file deleted")
+        elif event.get("quarantined"):
+            quarantine_path = event.get("quarantine_path", 'secure location')
+            parts.append(f"Action: Quarantined to {quarantine_path}")
+
+        return "\n".join(parts) if parts else "Policy violation detected"
 
     async def execute_block(self, event: Dict, action: Dict) -> BlockResult:
         """Block action/transfer"""

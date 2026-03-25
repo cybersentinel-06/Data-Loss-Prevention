@@ -28,6 +28,9 @@ class EventCreate(BaseModel):
     file_path: Optional[str] = Field(None, description="File path if applicable")
     source_path: Optional[str] = Field(None, description="Original source path (for transfer/block policies)")
     classification: Optional[Dict[str, Any]] = Field(None, description="Classification data")
+    classification_level: Optional[str] = Field(None, description="Classification level (Public/Internal/Confidential/Restricted)")
+    classification_score: Optional[float] = Field(None, description="Classification confidence score (0.0-1.0)")
+    classification_labels: Optional[List[str]] = Field(None, description="List of sensitive data types detected")
     action: Optional[str] = Field(None, description="Action taken (logged, blocked, alerted, etc.)")
     destination: Optional[str] = Field(None, description="Destination path for transfers")
     destination_type: Optional[str] = Field(None, description="Destination type (e.g., removable_drive, network_share)")
@@ -107,9 +110,13 @@ async def create_event(
     processor = get_event_processor()
     processed_event = await processor.process_event(_build_processor_payload(event))
 
+    # Build event title
+    event_title = _build_event_title(event, processed_event)
+
     # Create event document
     event_doc: Dict[str, Any] = {
         "id": event.event_id,
+        "title": event_title,
         "timestamp": datetime.utcnow(),
         "event_type": event.event_type,
         "severity": processed_event.get("event", {}).get("severity", event.severity),
@@ -117,8 +124,8 @@ async def create_event(
         "source": event.source_type,
         "source_type": event.source_type,
         "user_email": event.user_email or "agent@system",
-        "classification_score": 0.0,
-        "classification_labels": [],
+        "classification_score": event.classification_score if hasattr(event, 'classification_score') else 0.0,
+        "classification_labels": event.classification_labels if hasattr(event, 'classification_labels') else [],
         "policy_id": None,
         "action_taken": processed_event.get("event", {}).get("action", event.action or "logged"),
         "file_path": event.file_path,
@@ -230,7 +237,63 @@ def _build_processor_payload(event: EventCreate) -> Dict[str, Any]:
     if event.policy_version:
         payload["policy_version"] = event.policy_version
 
+    # Include classification data from agent
+    if event.classification_level or event.classification_score or event.classification_labels:
+        payload["classification_metadata"] = {
+            "classification_level": event.classification_level,
+            "confidence_score": event.classification_score or 0.0,
+        }
+        if event.classification_labels:
+            payload["classification_labels"] = event.classification_labels
+
     return payload
+
+
+def _build_event_title(event: EventCreate, processed_event: Dict[str, Any]) -> str:
+    """Build descriptive event title"""
+    from pathlib import Path
+
+    event_type = event.event_type
+    event_subtype = event.event_subtype or ""
+
+    # Extract file name
+    file_name = "Unknown"
+    if event.file_path:
+        file_name = Path(event.file_path).name
+
+    # Extract classification
+    classification_meta = processed_event.get("classification_metadata", {})
+    classification = classification_meta.get("classification_level", "Public")
+    confidence = classification_meta.get("confidence_score", 0.0)
+
+    # Check if blocked
+    blocked = processed_event.get("blocked", False)
+
+    # Build title based on event type
+    if "usb" in event_type.lower():
+        if "file_transfer" in event_subtype.lower():
+            action = "Blocked" if blocked else "Allowed"
+            if classification and confidence > 0:
+                return f"USB Transfer {action} - {file_name} ({classification} - {int(confidence * 100)}%)"
+            else:
+                return f"USB Transfer {action} - {file_name}"
+        elif "connect" in event_subtype.lower():
+            return "USB Device Connected"
+        elif "disconnect" in event_subtype.lower():
+            return "USB Device Disconnected"
+        else:
+            return f"USB Event - {event_subtype}"
+    elif "clipboard" in event_type.lower():
+        action = "Blocked" if blocked else "Copied"
+        if classification and confidence > 0:
+            return f"Clipboard {action} ({classification} - {int(confidence * 100)}%)"
+        else:
+            return f"Clipboard {action}"
+    elif "file" in event_type.lower():
+        action = "Blocked" if blocked else "Modified"
+        return f"File {action} - {file_name}"
+    else:
+        return f"{event_type.title()} Event - {file_name}"
 
 
 def _merge_processed_event(event_doc: Dict[str, Any], processed_event: Dict[str, Any]) -> None:
