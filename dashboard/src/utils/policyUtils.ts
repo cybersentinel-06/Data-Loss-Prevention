@@ -375,9 +375,9 @@ export const transformFrontendPolicyToApi = (policy: Partial<Policy>): any => {
     enabled: policy.enabled ?? true,
     config: policy.config,
     agent_ids: policy.agentIds || [],
-    // Backend format (empty for now, will be transformed from config later)
-    conditions: [],
-    actions: [],
+    // Pass through conditions and actions for classification-aware policies
+    conditions: policy.conditions || [],
+    actions: policy.actions || [],
     compliance_tags: [],
   }
 }

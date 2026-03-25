@@ -1,7 +1,7 @@
 'use client'
 
 import { PolicyType } from '@/types/policy'
-import { Clipboard, FileText, Usb, HardDrive, Cloud } from 'lucide-react'
+import { Clipboard, FileText, Usb, HardDrive, Cloud, Shield } from 'lucide-react'
 
 interface PolicyTypeSelectorProps {
   selectedType: PolicyType | null
@@ -61,6 +61,12 @@ const policyTypes: Array<{
     label: 'OneDrive (Cloud)',
     description: 'Monitor OneDrive via Cloud API (OAuth required)',
     icon: Cloud
+  },
+  {
+    type: 'classification_aware_policy',
+    label: 'Classification-Aware Policy',
+    description: 'Advanced policy based on content classification and confidence scores',
+    icon: Shield
   }
 ]
 

@@ -23,6 +23,7 @@ import USBTransferPolicyForm from './USBTransferPolicyForm'
 import GoogleDriveLocalPolicyForm from './GoogleDriveLocalPolicyForm'
 import GoogleDriveCloudPolicyForm from './GoogleDriveCloudPolicyForm'
 import OneDriveCloudPolicyForm from './OneDriveCloudPolicyForm'
+import ClassificationPolicyForm, { ClassificationPolicy } from './ClassificationPolicyForm'
 import { getAgents, Agent } from '@/lib/api'
 import { X, ChevronLeft, ChevronRight, Check } from 'lucide-react'
 import toast from 'react-hot-toast'
@@ -34,8 +35,12 @@ interface PolicyCreatorModalProps {
   editingPolicy?: Policy | null
 }
 
-const getDefaultConfig = (type: PolicyType): ClipboardConfig | FileSystemConfig | USBDeviceConfig | USBTransferConfig | FileTransferConfig | GoogleDriveLocalConfig | GoogleDriveCloudConfig | OneDriveCloudConfig => {
+const getDefaultConfig = (type: PolicyType): ClipboardConfig | FileSystemConfig | USBDeviceConfig | USBTransferConfig | FileTransferConfig | GoogleDriveLocalConfig | GoogleDriveCloudConfig | OneDriveCloudConfig | {} => {
   switch (type) {
+    case 'classification_aware_policy':
+      // Classification-aware policies don't use config, they use conditions/actions
+      return {}
+
     case 'clipboard_monitoring':
       return {
         patterns: {
@@ -138,20 +143,43 @@ export default function PolicyCreatorModal({
   const [config, setConfig] = useState<ClipboardConfig | FileSystemConfig | USBDeviceConfig | USBTransferConfig | FileTransferConfig | GoogleDriveLocalConfig | GoogleDriveCloudConfig>(
     editingPolicy?.config || (policyType ? getDefaultConfig(policyType) : getDefaultConfig('clipboard_monitoring'))
   )
+  const [classificationPolicy, setClassificationPolicy] = useState<ClassificationPolicy>(() => {
+    if (editingPolicy?.conditions && editingPolicy?.actions) {
+      return {
+        conditions: editingPolicy.conditions,
+        actions: editingPolicy.actions
+      }
+    }
+    return {
+      conditions: {
+        match: 'all',
+        rules: []
+      },
+      actions: {}
+    }
+  })
 
   // Reset form when modal opens/closes or editing policy changes
   useEffect(() => {
     if (isOpen) {
       if (editingPolicy) {
         setStep(1)
-        setPolicyType(editingPolicy.type)
+        setPolicyType(editingPolicy.type || 'classification_aware_policy')
         setPolicyName(editingPolicy.name)
         setDescription(editingPolicy.description || '')
-        setSeverity(editingPolicy.severity)
+        setSeverity(editingPolicy.severity || 'medium')
         setPriority(editingPolicy.priority)
         setEnabled(editingPolicy.enabled)
         setAgentId(editingPolicy.agentIds?.[0] || '')
-        setConfig(editingPolicy.config)
+        if (editingPolicy.config) {
+          setConfig(editingPolicy.config)
+        }
+        if (editingPolicy.conditions && editingPolicy.actions) {
+          setClassificationPolicy({
+            conditions: editingPolicy.conditions,
+            actions: editingPolicy.actions
+          })
+        }
       } else {
         // Reset for new policy
         setStep(1)
@@ -163,6 +191,13 @@ export default function PolicyCreatorModal({
         setEnabled(true)
         setAgentId('')
         setConfig(getDefaultConfig('clipboard_monitoring'))
+        setClassificationPolicy({
+          conditions: {
+            match: 'all',
+            rules: []
+          },
+          actions: {}
+        })
       }
     }
   }, [isOpen, editingPolicy])
@@ -216,21 +251,60 @@ export default function PolicyCreatorModal({
       return
     }
 
-    const policy: Partial<Policy> = {
-      name: policyName.trim(),
-      description: description.trim() || undefined,
-      type: policyType,
-      severity,
-      priority,
-      enabled,
-      config,
-      agentIds: agentId ? [agentId] : [],
-    }
+    let policy: Partial<Policy>
 
-    const validation = validatePolicy(policy)
-    if (!validation.valid) {
-      toast.error(validation.errors[0] || 'Invalid policy configuration')
-      return
+    if (policyType === 'classification_aware_policy') {
+      // Classification-aware policy uses conditions/actions format
+      if (classificationPolicy.conditions.rules.length === 0) {
+        toast.error('At least one condition is required for classification-aware policies')
+        return
+      }
+
+      if (Object.keys(classificationPolicy.actions).length === 0) {
+        toast.error('At least one action is required for classification-aware policies')
+        return
+      }
+
+      // Convert conditions from {match, rules} to just rules array for API
+      const conditionsArray = classificationPolicy.conditions.rules.map(rule => ({
+        field: rule.field,
+        operator: rule.operator,
+        value: rule.value
+      }))
+
+      // Convert actions from {alert: {}, block: {}} to [{type: "alert", parameters: {}}, {type: "block", parameters: {}}]
+      const actionsArray = Object.entries(classificationPolicy.actions).map(([actionType, actionConfig]) => ({
+        type: actionType,
+        parameters: actionConfig || {}
+      }))
+
+      policy = {
+        name: policyName.trim(),
+        description: description.trim() || undefined,
+        priority,
+        enabled,
+        conditions: conditionsArray,
+        actions: actionsArray,
+        agentIds: agentId ? [agentId] : [],
+      }
+    } else {
+      // Traditional policy uses type/severity/config format
+      policy = {
+        name: policyName.trim(),
+        description: description.trim() || undefined,
+        type: policyType,
+        severity,
+        priority,
+        enabled,
+        config,
+        agentIds: agentId ? [agentId] : [],
+      }
+
+      const validation = validatePolicy(policy)
+      if (!validation.valid) {
+        toast.error(validation.errors[0] || 'Invalid policy configuration')
+        return
+      }
     }
 
     onSave(policy)
@@ -238,7 +312,11 @@ export default function PolicyCreatorModal({
   }
 
   const canProceedFromStep1 = policyType !== null
-  const canProceedFromStep2 = policyType !== null && config !== null
+  const canProceedFromStep2 = policyType !== null && (
+    policyType === 'classification_aware_policy'
+      ? classificationPolicy.conditions.rules.length > 0 && Object.keys(classificationPolicy.actions).length > 0
+      : config !== null
+  )
   const canSave = policyName.trim() !== '' && policyType !== null
 
   if (!isOpen) return null
@@ -333,20 +411,22 @@ export default function PolicyCreatorModal({
                       placeholder="Describe what this policy does..."
                     />
                   </div>
-                  <div className="grid grid-cols-2 gap-4">
-                    <div>
-                      <label className="block text-sm font-medium text-gray-200 mb-2">Severity Level</label>
-                      <select
-                        value={severity}
-                        onChange={(e) => setSeverity(e.target.value as typeof severity)}
-                        className="w-full px-4 py-3 bg-gray-900/50 border-2 border-gray-600 rounded-xl text-white focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/20 transition-all"
-                      >
-                        <option value="low">Low</option>
-                        <option value="medium">Medium</option>
-                        <option value="high">High</option>
-                        <option value="critical">Critical</option>
-                      </select>
-                    </div>
+                  <div className={`grid ${policyType === 'classification_aware_policy' ? 'grid-cols-1' : 'grid-cols-2'} gap-4`}>
+                    {policyType !== 'classification_aware_policy' && (
+                      <div>
+                        <label className="block text-sm font-medium text-gray-200 mb-2">Severity Level</label>
+                        <select
+                          value={severity}
+                          onChange={(e) => setSeverity(e.target.value as typeof severity)}
+                          className="w-full px-4 py-3 bg-gray-900/50 border-2 border-gray-600 rounded-xl text-white focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/20 transition-all"
+                        >
+                          <option value="low">Low</option>
+                          <option value="medium">Medium</option>
+                          <option value="high">High</option>
+                          <option value="critical">Critical</option>
+                        </select>
+                      </div>
+                    )}
                     <div>
                       <label className="block text-sm font-medium text-gray-200 mb-2">Priority</label>
                       <input
@@ -354,9 +434,9 @@ export default function PolicyCreatorModal({
                         value={priority}
                         onChange={(e) => setPriority(parseInt(e.target.value) || 100)}
                         min="1"
-                        max="100"
+                        max="1000"
                         className="w-full px-4 py-3 bg-gray-900/50 border-2 border-gray-600 rounded-xl text-white placeholder-gray-400 focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/20 transition-all"
-                        placeholder="1-100"
+                        placeholder="1-1000"
                       />
                       <p className="text-xs text-gray-400 mt-1">Higher priority policies are evaluated first</p>
                     </div>
@@ -453,6 +533,13 @@ export default function PolicyCreatorModal({
                     onChange={(newConfig) => setConfig(newConfig)}
                   />
                 )}
+
+                {policyType === 'classification_aware_policy' && (
+                  <ClassificationPolicyForm
+                    policy={classificationPolicy}
+                    onChange={(newPolicy) => setClassificationPolicy(newPolicy)}
+                  />
+                )}
               </div>
             </div>
           )}
@@ -476,10 +563,12 @@ export default function PolicyCreatorModal({
                     <span className="text-gray-400">Type:</span>
                     <span className="text-white font-medium">{policyType ? policyType.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase()) : 'Not set'}</span>
                   </div>
-                  <div className="flex justify-between">
-                    <span className="text-gray-400">Severity:</span>
-                    <span className="text-white font-medium uppercase">{severity}</span>
-                  </div>
+                  {policyType !== 'classification_aware_policy' && (
+                    <div className="flex justify-between">
+                      <span className="text-gray-400">Severity:</span>
+                      <span className="text-white font-medium uppercase">{severity}</span>
+                    </div>
+                  )}
                   <div className="flex justify-between">
                     <span className="text-gray-400">Priority:</span>
                     <span className="text-white font-medium">{priority}</span>
@@ -492,7 +581,31 @@ export default function PolicyCreatorModal({
               </div>
 
               {/* Configuration Preview */}
-              {config && (
+              {policyType === 'classification_aware_policy' ? (
+                <div className="bg-gray-900/50 rounded-xl p-6 border border-gray-700">
+                  <h4 className="text-lg font-semibold text-white mb-4">Policy Rules</h4>
+                  <div className="space-y-4">
+                    <div>
+                      <h5 className="text-sm font-semibold text-gray-300 mb-2">Conditions ({classificationPolicy.conditions.match === 'all' ? 'Match ALL' : 'Match ANY'})</h5>
+                      <div className="space-y-2">
+                        {classificationPolicy.conditions.rules.map((rule, idx) => (
+                          <div key={idx} className="bg-gray-800 p-3 rounded-lg text-xs text-gray-300">
+                            <span className="text-indigo-400">{rule.field}</span>
+                            {' '}<span className="text-gray-500">{rule.operator}</span>{' '}
+                            <span className="text-green-400">{JSON.stringify(rule.value)}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                    <div>
+                      <h5 className="text-sm font-semibold text-gray-300 mb-2">Actions</h5>
+                      <pre className="bg-gray-800 p-4 rounded-lg text-xs overflow-x-auto text-gray-300">
+                        {JSON.stringify(classificationPolicy.actions, null, 2)}
+                      </pre>
+                    </div>
+                  </div>
+                </div>
+              ) : config && (
                 <div className="bg-gray-900/50 rounded-xl p-6 border border-gray-700">
                   <h4 className="text-lg font-semibold text-white mb-4">Configuration</h4>
                   <pre className="bg-gray-800 p-4 rounded-lg text-xs overflow-x-auto text-gray-300">

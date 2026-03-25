@@ -3,7 +3,7 @@
  * Shared types for policy management
  */
 
-export type PolicyType = 
+export type PolicyType =
   | 'clipboard_monitoring'
   | 'file_system_monitoring'
   | 'file_transfer_monitoring'
@@ -12,6 +12,7 @@ export type PolicyType =
   | 'google_drive_local_monitoring'
   | 'google_drive_cloud_monitoring'
   | 'onedrive_cloud_monitoring'
+  | 'classification_aware_policy'
 
 export type PolicySeverity = 'low' | 'medium' | 'high' | 'critical'
 export type ClipboardAction = 'alert' | 'log'
@@ -105,29 +106,75 @@ export interface OneDriveCloudConfig {
   action: 'log'
 }
 
-export type PolicyConfig = 
-  | ClipboardConfig 
-  | FileSystemConfig 
+// Classification-aware policy types
+export interface PolicyCondition {
+  field: string
+  operator: string
+  value: any
+}
+
+export interface ClassificationPolicyConfig {
+  conditions: {
+    match: 'all' | 'any'
+    rules: PolicyCondition[]
+  }
+  actions: {
+    alert?: {
+      severity: 'low' | 'medium' | 'high' | 'critical'
+      message?: string
+    }
+    block?: {}
+    quarantine?: {
+      location?: string
+    }
+    log?: {
+      level?: 'info' | 'warning' | 'error'
+    }
+  }
+}
+
+export type PolicyConfig =
+  | ClipboardConfig
+  | FileSystemConfig
   | FileTransferConfig
-  | USBDeviceConfig 
-  | USBTransferConfig 
+  | USBDeviceConfig
+  | USBTransferConfig
   | GoogleDriveLocalConfig
   | GoogleDriveCloudConfig
   | OneDriveCloudConfig
+  | ClassificationPolicyConfig
 
 export interface Policy {
   id: string
   name: string
   description: string
-  type: PolicyType
-  severity: PolicySeverity
+  type?: PolicyType  // Optional for classification-aware policies
+  severity?: PolicySeverity  // Optional for classification-aware policies
   priority: number
   enabled: boolean
-  config: PolicyConfig
+  config?: PolicyConfig  // Optional - used for traditional policies
+  // Classification-aware policy fields (alternative to type/config)
+  conditions?: {
+    match: 'all' | 'any'
+    rules: PolicyCondition[]
+  }
+  actions?: {
+    alert?: {
+      severity: 'low' | 'medium' | 'high' | 'critical'
+      message?: string
+    }
+    block?: {}
+    quarantine?: {
+      location?: string
+    }
+    log?: {
+      level?: 'info' | 'warning' | 'error'
+    }
+  }
   agentId?: string
   agentIds?: string[]
-  createdAt: string
-  updatedAt: string
+  createdAt?: string
+  updatedAt?: string
   createdBy?: string
   violations?: number
   lastViolation?: string

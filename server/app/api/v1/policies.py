@@ -401,7 +401,9 @@ async def create_policy(
     """
     print(f"DEBUG: create_policy called with type={policy.type}")
     print(f"DEBUG: config={policy.config}")
-    
+    print(f"DEBUG: conditions={policy.conditions}")
+    print(f"DEBUG: actions={policy.actions}")
+
     policy_service = PolicyService(db)
 
     # Transform frontend config to backend conditions/actions if config is provided
@@ -415,6 +417,7 @@ async def create_policy(
             "rules": [cond.dict() for cond in (policy.conditions or [])]
         }
         actions_dict = {action.type: action.parameters for action in (policy.actions or [])}
+        print(f"DEBUG: Converted actions_dict={actions_dict}")
 
     try:
         agent_ids = await _normalize_agent_scope(db, policy.agent_id, policy.agent_ids)
