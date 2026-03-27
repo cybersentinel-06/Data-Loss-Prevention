@@ -196,14 +196,18 @@ export type Agent = {
 
 export type Event = {
   id: string
+  title?: string
   agent_id: string
   event_type: string
   event_subtype?: string
   severity: string
   description?: string
+  classification_level?: string
   classification_score?: number
   classification_labels?: string[]
   classification_type?: string
+  classification?: Array<{ label: string; confidence: number; [key: string]: any }>
+  classification_metadata?: Record<string, any>
   file_path?: string
   file_name?: string
   file_id?: string

@@ -45,6 +45,7 @@ class EventCreate(BaseModel):
 
 class DLPEvent(BaseModel):
     id: str = ""
+    title: Optional[str] = None
     timestamp: Optional[datetime] = None
     event_type: str = "unknown"
     event_subtype: Optional[str] = None
@@ -52,8 +53,11 @@ class DLPEvent(BaseModel):
     source: str = "unknown"
     agent_id: str = "unknown"
     user_email: str = "agent@system"
-    classification_score: float = 0.0
-    classification_labels: List[str] = Field(default_factory=list)
+    classification_level: Optional[str] = None
+    classification_score: Optional[float] = 0.0
+    classification_labels: Optional[List[str]] = Field(default_factory=list)
+    classification: Optional[List[Dict[str, Any]]] = None
+    classification_metadata: Optional[Dict[str, Any]] = None
     policy_id: Optional[str] = None
     action_taken: str = "logged"
     severity: str = "medium"
@@ -124,6 +128,7 @@ async def create_event(
         "source": event.source_type,
         "source_type": event.source_type,
         "user_email": event.user_email or "agent@system",
+        "classification_level": event.classification_level,
         "classification_score": event.classification_score if hasattr(event, 'classification_score') else 0.0,
         "classification_labels": event.classification_labels if hasattr(event, 'classification_labels') else [],
         "policy_id": None,
@@ -308,6 +313,12 @@ def _merge_processed_event(event_doc: Dict[str, Any], processed_event: Dict[str,
         confidences = [cls.get("confidence", 0.0) for cls in classification if isinstance(cls, dict)]
         if confidences:
             event_doc["classification_score"] = max(confidences)
+
+    classification_metadata = processed_event.get("classification_metadata")
+    if classification_metadata:
+        event_doc["classification_metadata"] = classification_metadata
+        if classification_metadata.get("classification_level"):
+            event_doc["classification_level"] = classification_metadata["classification_level"]
 
     matched_policies = processed_event.get("matched_policies")
     if matched_policies:

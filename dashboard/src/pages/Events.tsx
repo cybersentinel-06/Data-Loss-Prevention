@@ -456,6 +456,39 @@ function EventDetailModal({
             </>
           )}
 
+          {/* Classification Level and Confidence Score */}
+          {(event.classification_level || event.classification_score) && (
+            <div className="bg-gradient-to-r from-purple-50 to-indigo-50 rounded-xl p-6 border border-purple-200">
+              <div className="flex items-center gap-2 mb-4">
+                <Shield className="w-5 h-5 text-purple-600" />
+                <label className="text-sm text-gray-700 uppercase font-semibold">Classification Result</label>
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                {event.classification_level && (
+                  <div>
+                    <label className="text-xs text-gray-600 mb-1 block">Classification Level</label>
+                    <span className={`inline-flex items-center gap-2 px-4 py-2 rounded-lg border text-base font-bold ${
+                      event.classification_level === 'Restricted' ? 'bg-red-100 border-red-300 text-red-700' :
+                      event.classification_level === 'Confidential' ? 'bg-orange-100 border-orange-300 text-orange-700' :
+                      event.classification_level === 'Internal' ? 'bg-yellow-100 border-yellow-300 text-yellow-700' :
+                      'bg-green-100 border-green-300 text-green-700'
+                    }`}>
+                      {event.classification_level}
+                    </span>
+                  </div>
+                )}
+                {event.classification_score != null && event.classification_score > 0 && (
+                  <div>
+                    <label className="text-xs text-gray-600 mb-1 block">Confidence Score</label>
+                    <p className="text-2xl font-bold text-gray-900">
+                      {Math.round(event.classification_score * 100)}%
+                    </p>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
           {/* Classification Labels - What Was Detected */}
           {classificationLabels.length > 0 && (
             <div className="bg-gray-50 rounded-xl p-6 border border-gray-200">
@@ -1019,6 +1052,13 @@ export default function Events() {
 
                   {/* Content */}
                   <div className="flex-1 min-w-0">
+                    {/* Event Title */}
+                    {event.title && (
+                      <h4 className="font-semibold text-gray-900 mb-2 text-base">
+                        {event.title}
+                      </h4>
+                    )}
+
                     <div className="flex items-center gap-2 mb-1 flex-wrap">
                       {/* Show action type prominently for OneDrive/Google Drive events */}
                       {event.event_subtype && (event.source === 'onedrive_cloud' || event.source === 'google_drive_cloud') && (
