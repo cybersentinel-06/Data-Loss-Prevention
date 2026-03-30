@@ -68,89 +68,96 @@ export const getPolicyTypeLabel = (type: PolicyType): string => {
  */
 export const formatPolicyConfig = (policy: Policy): string => {
   const { type, config } = policy
-  
-  switch (type) {
-    case 'clipboard_monitoring': {
-      const c = config as ClipboardConfig
-      const predefined = c.patterns.predefined.map(p => {
-        const labels: Record<string, string> = {
-          'ssn': 'SSN',
-          'credit_card': 'Credit Card',
-          'email': 'Email',
-          'phone': 'Phone',
-          'api_key': 'API Key',
-          'private_key': 'Private Key'
-        }
-        return labels[p] || p
-      }).join(', ')
-      const custom = c.patterns.custom.length > 0 
-        ? `, ${c.patterns.custom.length} custom pattern(s)`
-        : ''
-      return `Patterns: ${predefined}${custom} | Action: ${c.action}`
-    }
-    
-    case 'file_system_monitoring': {
-      const c = config as FileSystemConfig
-      const events = Object.entries(c.events)
-        .filter(([_, enabled]) => enabled)
-        .map(([event]) => event.charAt(0).toUpperCase() + event.slice(1))
-        .join(', ')
-      const paths = c.monitoredPaths.length > 0 
-        ? `${c.monitoredPaths.length} path(s)`
-        : 'No paths'
-      return `Paths: ${paths} | Events: ${events} | Action: ${c.action}`
-    }
 
-    case 'file_transfer_monitoring': {
-      const c = config as FileTransferConfig
-      const protectedCount = c.protectedPaths.length || 0
-      const destCount = c.monitoredDestinations.length || 0
-      const events = Object.entries(c.events)
-        .filter(([_, enabled]) => enabled)
-        .map(([event]) => event.charAt(0).toUpperCase() + event.slice(1))
-        .join(', ')
-      return `Protected: ${protectedCount} path(s) | Destinations: ${destCount} | Events: ${events || 'None'} | Action: ${c.action}`
-    }
-    
-    case 'usb_device_monitoring': {
-      const c = config as USBDeviceConfig
-      const events = Object.entries(c.events)
-        .filter(([_, enabled]) => enabled)
-        .map(([event]) => event.charAt(0).toUpperCase() + event.slice(1))
-        .join(', ')
-      return `Events: ${events} | Action: ${c.action}`
-    }
-    
-    case 'usb_file_transfer_monitoring': {
-      const c = config as USBTransferConfig
-      const paths = c.monitoredPaths.length > 0 
-        ? `${c.monitoredPaths.length} path(s)`
-        : 'No paths'
-      return `Paths: ${paths} | Action: ${c.action}`
-    }
-    
-    case 'google_drive_local_monitoring': {
-      const c = config as any
-      const folders = c.monitoredFolders && c.monitoredFolders.length > 0
-        ? `${c.monitoredFolders.length} folder(s)`
-        : 'Entire drive'
-      const events = Object.entries(c.events || {})
-        .filter(([_, enabled]) => enabled)
-        .map(([event]) => event.charAt(0).toUpperCase() + event.slice(1))
-        .join(', ')
-      return `Base: ${c.basePath || 'G:\\My Drive\\'} | Folders: ${folders} | Events: ${events || 'None'} | Action: ${c.action}`
-    }
+  if (!config || typeof config !== 'object') return 'No configuration'
 
-    case 'google_drive_cloud_monitoring': {
-      const c = config as any
-      const folders = c.protectedFolders && c.protectedFolders.length > 0
-        ? `${c.protectedFolders.length} folder(s)`
-        : 'None'
-      return `Folders: ${folders} | Interval: ${c.pollingInterval || 10} min | Action: log`
+  try {
+    switch (type) {
+      case 'clipboard_monitoring': {
+        const c = config as ClipboardConfig
+        if (!c.patterns) return `Action: ${c.action || 'alert'}`
+        const predefined = (c.patterns.predefined || []).map(p => {
+          const labels: Record<string, string> = {
+            'ssn': 'SSN',
+            'credit_card': 'Credit Card',
+            'email': 'Email',
+            'phone': 'Phone',
+            'api_key': 'API Key',
+            'private_key': 'Private Key'
+          }
+          return labels[p] || p
+        }).join(', ')
+        const custom = (c.patterns.custom || []).length > 0
+          ? `, ${c.patterns.custom.length} custom pattern(s)`
+          : ''
+        return `Patterns: ${predefined}${custom} | Action: ${c.action || 'alert'}`
+      }
+
+      case 'file_system_monitoring': {
+        const c = config as FileSystemConfig
+        const events = Object.entries(c.events || {})
+          .filter(([_, enabled]) => enabled)
+          .map(([event]) => event.charAt(0).toUpperCase() + event.slice(1))
+          .join(', ')
+        const paths = (c.monitoredPaths || []).length > 0
+          ? `${c.monitoredPaths.length} path(s)`
+          : 'No paths'
+        return `Paths: ${paths} | Events: ${events} | Action: ${c.action || 'alert'}`
+      }
+
+      case 'file_transfer_monitoring': {
+        const c = config as FileTransferConfig
+        const protectedCount = (c.protectedPaths || []).length
+        const destCount = (c.monitoredDestinations || []).length
+        const events = Object.entries(c.events || {})
+          .filter(([_, enabled]) => enabled)
+          .map(([event]) => event.charAt(0).toUpperCase() + event.slice(1))
+          .join(', ')
+        return `Protected: ${protectedCount} path(s) | Destinations: ${destCount} | Events: ${events || 'None'} | Action: ${c.action || 'alert'}`
+      }
+
+      case 'usb_device_monitoring': {
+        const c = config as USBDeviceConfig
+        const events = Object.entries(c.events || {})
+          .filter(([_, enabled]) => enabled)
+          .map(([event]) => event.charAt(0).toUpperCase() + event.slice(1))
+          .join(', ')
+        return `Events: ${events} | Action: ${c.action || 'alert'}`
+      }
+
+      case 'usb_file_transfer_monitoring': {
+        const c = config as USBTransferConfig
+        const paths = (c.monitoredPaths || []).length > 0
+          ? `${c.monitoredPaths.length} path(s)`
+          : 'All paths'
+        return `Paths: ${paths} | Action: ${c.action || 'block'}`
+      }
+
+      case 'google_drive_local_monitoring': {
+        const c = config as any
+        const folders = (c.monitoredFolders || []).length > 0
+          ? `${c.monitoredFolders.length} folder(s)`
+          : 'Entire drive'
+        const events = Object.entries(c.events || {})
+          .filter(([_, enabled]) => enabled)
+          .map(([event]) => event.charAt(0).toUpperCase() + event.slice(1))
+          .join(', ')
+        return `Base: ${c.basePath || 'G:\\My Drive\\'} | Folders: ${folders} | Events: ${events || 'None'} | Action: ${c.action || 'alert'}`
+      }
+
+      case 'google_drive_cloud_monitoring': {
+        const c = config as any
+        const folders = (c.protectedFolders || []).length > 0
+          ? `${c.protectedFolders.length} folder(s)`
+          : 'None'
+        return `Folders: ${folders} | Interval: ${c.pollingInterval || 10} min | Action: log`
+      }
+
+      default:
+        return (config as any).description || 'Custom configuration'
     }
-    
-    default:
-      return 'Unknown configuration'
+  } catch {
+    return 'Configuration available'
   }
 }
 
