@@ -2556,12 +2556,12 @@ if (!tempHasUsbDevicePolicies && previousUsbBlocking) {
              }
          }
          
-         // Extract policy_count
-         std::string policyCount = std::to_string(filePolicies.size() + clipboardPolicies.size() + usbPolicies.size());
-         
-         allowEvents = hasFilePolices || hasClipboardPolicies || 
+         // Extract policy_count (include USB transfer policies)
+         std::string policyCount = std::to_string(filePolicies.size() + clipboardPolicies.size() + usbPolicies.size() + usbTransferPolicies.size());
+
+         allowEvents = hasFilePolices || hasClipboardPolicies ||
                        hasUsbDevicePolicies || hasUsbTransferPolicies;
-         
+
          logger.Info("========================================");
          logger.Info("Policy Bundle Applied from Server:");
          logger.Info("  Version: " + (activePolicyVersion.empty() ? "unknown" : activePolicyVersion));
@@ -2569,6 +2569,7 @@ if (!tempHasUsbDevicePolicies && previousUsbBlocking) {
          logger.Info("  File System Policies: " + std::to_string(filePolicies.size()) + (hasFilePolices ? " (ACTIVE)" : " (INACTIVE)"));
          logger.Info("  Clipboard Policies: " + std::to_string(clipboardPolicies.size()) + (hasClipboardPolicies ? " (ACTIVE)" : " (INACTIVE)"));
          logger.Info("  USB Device Policies: " + std::to_string(usbPolicies.size()) + (hasUsbDevicePolicies ? " (ACTIVE)" : " (INACTIVE)"));
+         logger.Info("  USB Transfer Policies: " + std::to_string(usbTransferPolicies.size()) + (hasUsbTransferPolicies ? " (ACTIVE)" : " (INACTIVE)"));
          logger.Info("  Monitored Paths: " + std::to_string(monitoredDirectories.size()));
          logger.Info("  Events Allowed: " + std::string(allowEvents ? "YES" : "NO"));
          logger.Info("========================================");
@@ -2703,10 +2704,34 @@ if (!tempHasUsbDevicePolicies && previousUsbBlocking) {
                 
                 std::cout << "[DEBUG] Config section: " << configObj.substr(0, 200) << std::endl;
                 
-                // Extract action
+                // Extract action from config.action first
                 rule.action = ExtractJsonString(configObj, "action");
+
+                // If no action in config, check the top-level "actions" object
+                // for "block", "quarantine", or "alert" keys
                 if (rule.action.empty()) {
-                    rule.action = "alert";
+                    size_t actionsCheckPos = policyObj.find("\"actions\"");
+                    if (actionsCheckPos != std::string::npos) {
+                        size_t actionsCheckStart = policyObj.find("{", actionsCheckPos);
+                        size_t actionsCheckEnd = FindMatchingBracket(policyObj, actionsCheckStart, '{', '}');
+                        if (actionsCheckStart != std::string::npos && actionsCheckEnd != std::string::npos) {
+                            std::string actionsStr = policyObj.substr(actionsCheckStart, actionsCheckEnd - actionsCheckStart + 1);
+                            // Priority: block > quarantine > alert > log
+                            if (actionsStr.find("\"block\"") != std::string::npos) {
+                                rule.action = "block";
+                            } else if (actionsStr.find("\"quarantine\"") != std::string::npos) {
+                                rule.action = "quarantine";
+                            } else if (actionsStr.find("\"alert\"") != std::string::npos) {
+                                rule.action = "alert";
+                            } else {
+                                rule.action = "alert";
+                            }
+                        } else {
+                            rule.action = "alert";
+                        }
+                    } else {
+                        rule.action = "alert";
+                    }
                 }
                 // Extract quarantinePath for usb_file_transfer_monitoring
                 if (policyType == "usb_file_transfer_monitoring") {
